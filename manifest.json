@@ -1,0 +1,15 @@
+{
+  "name": "VetriHub",
+  "short_name": "VetriHub",
+  "description": "Personal utility box",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#20242f",
+  "theme_color": "#20242f",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
