@@ -1,28 +1,42 @@
 # VetriHub
 
-A personal utility Progressive Web App (PWA) that brings together a set of everyday tools in one place. New tools are added over time.
+> A personal utility Progressive Web App (PWA) that brings together several everyday tools in one place.
 
-**Live:** https://hemasri-kalaiselvan.github.io/vetrihub/
+**Tech:** HTML, CSS, JavaScript, PWA
+**Tools:** GitHub
+**AI Tools:** ChatGPT, Claude
 
-## How it works
+## About
 
-VetriHub has two kinds of pages:
+VetriHub is a personal utility app that keeps a set of practical everyday tools together under one roof, rather than spread across separate apps. It currently includes three tools: a private **Cycle Tracker**, a **Recipe** collection, and a **Situations & Solutions** reference. It's built as an installable PWA and designed to grow, so new tools can be added the same way over time.
 
-- **Public pages** — reference tools that anyone can view (for example, recipes and a situations-and-solutions reference).
-- **Private pages** — personal tools marked with a lock icon, visible only to the owner (for example, a cycle tracker).
+The app has two kinds of pages: public ones that anyone can view (Recipe and Situations & Solutions), and private ones marked with a lock icon that only the owner can see (the Cycle Tracker). Sign-in is for the owner only — it's used to view private pages and to add, edit, or delete content.
 
-Sign-in is for the owner only. It is used to view private pages and to add, edit, or delete content across the app.
+## How AI Helped
 
-## Tech
+- **ChatGPT** — initial design direction and the first build prompt
+- **Claude** — assisted with code, debugging, and deployment
+- **GitHub** — hosting on GitHub Pages
 
-- Plain HTML, CSS, and JavaScript (no build step)
-- Progressive Web App (installable, works offline where supported)
-- Google Sign-In (OAuth) and Google Sheets for data
+The full documentation of how VetriHub was designed, prompted, and built:
 
-## Usage
+- [Design Document](docs/Design-Document.md)
+- [Prompt Document](docs/Prompt-Document.md)
+- [Build & Deployment](docs/Build-and-Deployment.md)
 
-Open the live link on a phone for the best experience, since the app is designed mobile-first. It can also be installed to your home screen as a PWA.
+### The process
 
-## Notes
+VetriHub started from a design and prompt drafted with ChatGPT, then was built and refined hands-on with Claude, and deployed to GitHub Pages.
 
-This is a personal project, built and maintained by Hemasri Kalaiselvan.
+### What I learned
+
+Building VetriHub showed how a fully client-side app can use Google Sign-In and Google Sheets as a lightweight backend, and how AI can help work through real deployment challenges — like the OAuth redirect — step by step.
+
+---
+
+## How it works (brief)
+
+- A single-file PWA (HTML, CSS, and JavaScript) with no build step.
+- Google Sign-In (OAuth) for the owner, with a restricted API key for public reads.
+- Google Sheets store the data; the app creates its own files on first sign-in.
+- Public pages are readable by anyone; the private Cycle Tracker is owner-only.
