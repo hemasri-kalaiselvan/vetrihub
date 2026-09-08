@@ -138,6 +138,25 @@
 
   .vh-toast{ position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-size: 13.5px; padding: 11px 18px; border-radius: 10px; z-index: 60; box-shadow: var(--shadow); animation: fade .15s ease; max-width: 90%; text-align: center; }
   .vh-debug-btn{ position: fixed; right: 14px; bottom: 14px; z-index: 55; background: var(--danger); color: #2a1414; border: none; border-radius: 20px; padding: 9px 14px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12.5px; box-shadow: var(--shadow); cursor: pointer; }
+
+  /* Milk */
+  .vh-month-bar{ display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
+  .vh-month-nav{ background: var(--surface-2); border: none; color: var(--text); width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+  .vh-month-nav:hover:not(:disabled){ background: #3a4152; color: var(--accent); }
+  .vh-month-nav:disabled{ opacity: 0.35; cursor: default; }
+  .vh-month-label{ font-family: 'Sora', sans-serif; font-weight: 600; font-size: 16px; }
+  .vh-summary{ display: flex; gap: 10px; margin-bottom: 16px; }
+  .vh-summary-card{ flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 14px; }
+  .vh-summary-label{ color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin-bottom: 5px; }
+  .vh-summary-value{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 19px; }
+  .vh-price-line{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; color: var(--text-dim); font-size: 13.5px; }
+  .vh-price-line b{ color: var(--text); font-weight: 600; }
+  .vh-price-edit{ background: var(--accent-dim); border: none; color: var(--accent); border-radius: 8px; padding: 6px 11px; font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+  .vh-price-edit:hover{ background: var(--accent); color: #23272f; }
+  .vh-qty-options{ display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .vh-qty-chip{ background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 4px; font-family: 'Sora', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; flex: 1; min-width: 60px; text-align: center; }
+  .vh-qty-chip:hover{ border-color: var(--accent); }
+  .vh-qty-chip.active{ background: var(--accent); color: #23272f; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -163,6 +182,10 @@ const CONFIG = {
   DOC_ID: "1ZrJ9oqR5uhNVhU3s1fBzz1bCi7a3OlZkcjAy1o3WGJY",
   // Situations & Solutions — public read, owner write, same pattern as Recipes.
   SITUATIONS_SHEET_ID: "1Uq6395_IOm8KgHQTC58ElHiPEXfeCanSCkVMa7OM_tQ",
+  // Milk — PRIVATE, owner only, same pattern as Cycle Tracker. Created on
+  // first sign-in if missing. Two tabs: "Entries" (Date, Litres) and
+  // "Prices" (Month YYYY-MM, PricePerLitre).
+  MILK_SHEET_ID: "",
   SCOPES: "openid email https://www.googleapis.com/auth/drive.file"
 };
 
@@ -181,7 +204,8 @@ const ICON = {
   italic: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>',
   underline: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="5" y1="20" x2="19" y2="20"/></svg>',
   quote: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h4v4a4 4 0 0 1-4 4v2a6 6 0 0 0 6-6V7Z"/><path d="M15 7h4v4a4 4 0 0 1-4 4v2a6 6 0 0 0 6-6V7Z"/></svg>',
-  ulist: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>'
+  ulist: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>',
+  price: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'
 };
 
 /* =========================================================
@@ -210,6 +234,14 @@ const state = {
   docId: localStorage.getItem("vetrihub_doc_id") || CONFIG.DOC_ID || "",
   cycles: [],
   cyclesLoading: false,
+  milkSheetId: localStorage.getItem("vetrihub_milk_sheet_id") || CONFIG.MILK_SHEET_ID || "",
+  milkEntries: [],        // { id, date:"YYYY-MM-DD", litres:Number }
+  milkPrices: {},         // { "YYYY-MM": Number }  price locked per month
+  milkLoading: false,
+  milkMonth: "",          // "YYYY-MM" currently viewed; defaults to current month
+  milkForm: null,         // { mode, id, date, litres, error }
+  milkDeleteId: null,
+  milkPriceForm: null,    // { month, price, error }
   recipes: [],
   recipesLoading: true,
   recipeViewFilter: "all",
@@ -331,7 +363,7 @@ function signOut(){
   sessionStorage.removeItem("vetrihub_token");
   sessionStorage.removeItem("vetrihub_token_exp");
   sessionStorage.setItem("vetrihub_screen", "home");
-  setState({ signedIn: false, accessToken: null, cycles: [], screen: state.screen === "cycle" ? "home" : state.screen });
+  setState({ signedIn: false, accessToken: null, cycles: [], milkEntries: [], milkPrices: {}, screen: (state.screen === "cycle" || state.screen === "milk") ? "home" : state.screen });
 }
 function cacheToken(token, expiresInSeconds){
   sessionStorage.setItem("vetrihub_token", token);
@@ -364,6 +396,7 @@ async function verifyAndSignIn(token, expiresInSeconds){
     await ensureAppFiles(token);
     await organizeFilesIntoFolder(token);
     await loadCycles();
+    await loadMilk();
   }catch(e){
     console.error("VetriHub: verifyAndSignIn error", e);
     showToast("Sign-in error. Try again.");
@@ -372,7 +405,7 @@ async function verifyAndSignIn(token, expiresInSeconds){
 
 /* Only runs the first time each file is missing — normally a no-op once IDs are hardcoded. */
 async function ensureAppFiles(token){
-  if(state.sheetId && state.recipesSheetId && state.situationsSheetId && state.docId) return;
+  if(state.sheetId && state.recipesSheetId && state.situationsSheetId && state.docId && state.milkSheetId) return;
   const authHeader = { Authorization: "Bearer " + token };
   let created = false;
 
@@ -458,6 +491,40 @@ async function ensureAppFiles(token){
     created = true;
   }
 
+  if(!state.milkSheetId){
+    // Create the spreadsheet with both tabs ("Entries" + "Prices") in one shot.
+    const res = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
+      method: "POST",
+      headers: { ...authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        properties: { title: "VetriHub Milk" },
+        sheets: [
+          { properties: { title: "Entries" } },
+          { properties: { title: "Prices" } }
+        ]
+      })
+    });
+    if(!res.ok){ console.error("VetriHub: milk sheet create failed", res.status, await res.text()); showToast("Couldn't create Milk sheet."); return; }
+    const data = await res.json();
+    state.milkSheetId = data.spreadsheetId;
+    localStorage.setItem("vetrihub_milk_sheet_id", state.milkSheetId);
+    // Private — no public permission. Write headers for both tabs.
+    const hdr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${state.milkSheetId}/values:batchUpdate`, {
+      method: "POST",
+      headers: { ...authHeader, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        valueInputOption: "RAW",
+        data: [
+          { range: "Entries!A1:B1", majorDimension: "ROWS", values: [["Date","Litres"]] },
+          { range: "Prices!A1:B1", majorDimension: "ROWS", values: [["Month","PricePerLitre"]] }
+        ]
+      })
+    });
+    if(!hdr.ok){ console.error("VetriHub: milk sheet header write failed", hdr.status, await hdr.text()); }
+    localStorage.removeItem("vetrihub_files_organized"); // re-run organizer once to file the new sheet
+    created = true;
+  }
+
   if(created){
     alert(
       "VetriHub created its files.\n\n" +
@@ -465,6 +532,7 @@ async function ensureAppFiles(token){
       "\nRecipes Sheet ID: " + state.recipesSheetId +
       "\nSituations Sheet ID: " + state.situationsSheetId +
       "\nRecipes Doc ID (mirror): " + state.docId +
+      "\nMilk Sheet ID: " + state.milkSheetId +
       "\n\nSend all to Claude to finish setup."
     );
   }
@@ -475,7 +543,7 @@ async function ensureAppFiles(token){
    flag skips it on every later sign-in. */
 async function organizeFilesIntoFolder(token){
   if(localStorage.getItem("vetrihub_files_organized") === "1") return;
-  if(!state.sheetId || !state.recipesSheetId || !state.situationsSheetId || !state.docId) return;
+  if(!state.sheetId || !state.recipesSheetId || !state.situationsSheetId || !state.docId || !state.milkSheetId) return;
   const authHeader = { Authorization: "Bearer " + token };
   try{
     let folderId = localStorage.getItem("vetrihub_folder_id");
@@ -491,7 +559,7 @@ async function organizeFilesIntoFolder(token){
       localStorage.setItem("vetrihub_folder_id", folderId);
     }
 
-    const fileIds = [state.sheetId, state.recipesSheetId, state.situationsSheetId, state.docId];
+    const fileIds = [state.sheetId, state.recipesSheetId, state.situationsSheetId, state.docId, state.milkSheetId];
     for(const fileId of fileIds){
       const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`, { headers: authHeader });
       if(!metaRes.ok){ console.error("VetriHub: couldn't read parents for", fileId, metaRes.status); continue; }
@@ -512,8 +580,8 @@ async function organizeFilesIntoFolder(token){
 
 function applySavedScreen(){
   const saved = sessionStorage.getItem("vetrihub_screen");
-  if(saved === "cycle" && !state.signedIn) return; // stay on default rather than showing a locked screen unexpectedly
-  if(saved === "home" || saved === "cycle" || saved === "recipe" || saved === "situations") state.screen = saved;
+  if((saved === "cycle" || saved === "milk") && !state.signedIn) return; // stay on default rather than showing a locked screen unexpectedly
+  if(saved === "home" || saved === "cycle" || saved === "milk" || saved === "recipe" || saved === "situations") state.screen = saved;
 }
 
 async function boot(){
@@ -547,6 +615,7 @@ async function boot(){
   if(cached && localStorage.getItem("vetrihub_was_signed_in") === "1"){
     setState({ signedIn: true, accessToken: cached });
     await loadCycles();
+    await loadMilk();
     applySavedScreen();
     render();
     await loadRecipesPublic();
@@ -626,6 +695,136 @@ async function saveCyclesToSheet(nextCycles){
     showToast("Couldn't save to Sheet — check Errors log.");
   }
   setState({ saving: false });
+}
+
+/* =========================================================
+   Milk — PRIVATE, owner only. Same reliable mechanism as Cycle Tracker.
+   Storage: one spreadsheet, two tabs.
+     Entries!A:B  -> Date (YYYY-MM-DD), Litres (number)
+     Prices!A:B   -> Month (YYYY-MM),   PricePerLitre (number)
+   Price is stored PER MONTH and locked: editing the current month's price
+   updates only that month; past months keep whatever was stored for them.
+========================================================= */
+function milkBase(){ return `https://sheets.googleapis.com/v4/spreadsheets/${state.milkSheetId}`; }
+function monthKey(iso){ return (iso || "").slice(0,7); }            // "2026-09-08" -> "2026-09"
+function currentMonthKey(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+function todayISO(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function monthLabel(key){ if(!key) return "—"; const [y,m] = key.split("-").map(Number); return `${MONTHS[m-1]} ${y}`; }
+function fmtLitres(n){ const v = Number(n)||0; return (Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/,"")) + " L"; }
+function fmtMoney(n){ const v = Number(n)||0; return "₹" + (Number.isInteger(v) ? v : v.toFixed(2)); }
+
+/* Effective price for a month: its own stored price if set, else the most
+   recent stored price from an EARLIER month (a price set now carries forward
+   to future months until changed, but never rewrites the past). */
+function priceForMonth(key){
+  if(state.milkPrices[key] != null) return state.milkPrices[key];
+  const earlier = Object.keys(state.milkPrices).filter(k => k < key).sort();
+  return earlier.length ? state.milkPrices[earlier[earlier.length-1]] : null;
+}
+
+async function loadMilk(){
+  if(!state.accessToken || !state.milkSheetId) return;
+  setState({ milkLoading: true });
+  try{
+    const res = await fetch(`${milkBase()}/values:batchGet?ranges=Entries!A2:B1000&ranges=Prices!A2:B1000`, {
+      headers: { Authorization: "Bearer " + state.accessToken },
+      cache: "no-store"
+    });
+    if(!res.ok){
+      const body = await res.text();
+      console.error("VetriHub: Milk read failed", res.status, body);
+      throw new Error("milk read failed: " + res.status);
+    }
+    const data = await res.json();
+    const ranges = data.valueRanges || [];
+    const entryRows = (ranges[0] && ranges[0].values) || [];
+    const priceRows = (ranges[1] && ranges[1].values) || [];
+    state.milkEntries = entryRows
+      .filter(r => r[0])
+      .map(r => ({ id: uid(), date: r[0], litres: Number(r[1]) || 0 }));
+    const prices = {};
+    priceRows.filter(r => r[0]).forEach(r => { prices[r[0]] = Number(r[1]) || 0; });
+    state.milkPrices = prices;
+    if(!state.milkMonth) state.milkMonth = currentMonthKey();
+  }catch(e){
+    console.error("VetriHub: loadMilk error", e);
+    showToast("Couldn't load milk — check Errors log.");
+  }
+  setState({ milkLoading: false });
+}
+
+/* Rewrite the whole Entries tab from state (same clear+write approach the
+   Cycle Tracker uses — simple and race-free for a single owner). */
+async function saveMilkEntries(nextEntries){
+  if(!state.accessToken || !state.milkSheetId) return false;
+  setState({ saving: true });
+  let ok = false;
+  try{
+    const clearRes = await fetch(`${milkBase()}/values/Entries!A2:B1000:clear`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.accessToken }
+    });
+    if(!clearRes.ok){ throw new Error("milk entries clear failed: " + clearRes.status + " " + await clearRes.text()); }
+    const sorted = [...nextEntries].sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
+    if(sorted.length){
+      const values = sorted.map(e => [e.date, e.litres]);
+      const upd = await fetch(`${milkBase()}/values/Entries!A2:B${sorted.length+1}?valueInputOption=RAW`, {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ range: `Entries!A2:B${sorted.length+1}`, majorDimension: "ROWS", values })
+      });
+      if(!upd.ok){ throw new Error("milk entries write failed: " + upd.status + " " + await upd.text()); }
+    }
+    state.milkEntries = nextEntries;
+    ok = true;
+  }catch(e){
+    console.error("VetriHub: saveMilkEntries error", e);
+    showToast("Couldn't save to Sheet — check Errors log.");
+  }
+  setState({ saving: false });
+  return ok;
+}
+
+/* Rewrite the whole Prices tab from a prices object. */
+async function saveMilkPrices(nextPrices){
+  if(!state.accessToken || !state.milkSheetId) return false;
+  setState({ saving: true });
+  let ok = false;
+  try{
+    const clearRes = await fetch(`${milkBase()}/values/Prices!A2:B1000:clear`, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + state.accessToken }
+    });
+    if(!clearRes.ok){ throw new Error("milk prices clear failed: " + clearRes.status + " " + await clearRes.text()); }
+    const keys = Object.keys(nextPrices).sort();
+    if(keys.length){
+      const values = keys.map(k => [k, nextPrices[k]]);
+      const upd = await fetch(`${milkBase()}/values/Prices!A2:B${keys.length+1}?valueInputOption=RAW`, {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ range: `Prices!A2:B${keys.length+1}`, majorDimension: "ROWS", values })
+      });
+      if(!upd.ok){ throw new Error("milk prices write failed: " + upd.status + " " + await upd.text()); }
+    }
+    state.milkPrices = nextPrices;
+    ok = true;
+  }catch(e){
+    console.error("VetriHub: saveMilkPrices error", e);
+    showToast("Couldn't save price — check Errors log.");
+  }
+  setState({ saving: false });
+  return ok;
+}
+
+/* Add or edit one day's entry. One entry per date — adding a date that
+   already exists overwrites its litres (you'd be correcting the day). */
+async function upsertMilkEntry(date, litres, editId){
+  const next = state.milkEntries.filter(e => e.id !== editId && e.date !== date);
+  next.push({ id: editId || uid(), date, litres });
+  return saveMilkEntries(next);
+}
+async function deleteMilkEntry(id){
+  return saveMilkEntries(state.milkEntries.filter(e => e.id !== id));
 }
 
 /* =========================================================
@@ -1069,6 +1268,9 @@ function render(){
     <main class="vh-main">${mainContent()}</main>
     ${state.cycleForm ? cycleFormModal() : ""}
     ${state.cycleDeleteId ? confirmModal("Delete this cycle entry? This cannot be undone.", "cycle") : ""}
+    ${state.milkForm ? milkFormModal() : ""}
+    ${state.milkPriceForm ? milkPriceModal() : ""}
+    ${state.milkDeleteId ? confirmModal("Delete this milk entry? This cannot be undone.", "milk") : ""}
     ${state.recipeForm ? recipeFormModal() : ""}
     ${state.recipeDeleteId ? confirmModal("Delete this recipe? This cannot be undone.", "recipe") : ""}
     ${state.situationForm ? situationFormModal() : ""}
@@ -1096,6 +1298,9 @@ function drawer(){
       <button class="vh-drawer-item ${state.screen==="cycle"?"active":""} ${state.signedIn?"":"disabled"}" ${state.signedIn ? 'data-nav="cycle"' : ""}>
         Cycle Tracker ${state.signedIn ? "" : `<span class="vh-lock-icon">${ICON.lock}</span>`}
       </button>
+      <button class="vh-drawer-item ${state.screen==="milk"?"active":""} ${state.signedIn?"":"disabled"}" ${state.signedIn ? 'data-nav="milk"' : ""}>
+        Milk ${state.signedIn ? "" : `<span class="vh-lock-icon">${ICON.lock}</span>`}
+      </button>
       <button class="vh-drawer-item ${state.screen==="recipe"?"active":""}" data-nav="recipe">Recipe</button>
       <button class="vh-drawer-item ${state.screen==="situations"?"active":""}" data-nav="situations">Situations &amp; Solutions</button>
       <hr class="vh-drawer-divider" />
@@ -1106,6 +1311,7 @@ function drawer(){
 function mainContent(){
   if(state.screen === "home") return homeView();
   if(state.screen === "cycle") return state.signedIn ? cycleView() : lockedView();
+  if(state.screen === "milk") return state.signedIn ? milkView() : lockedView("Milk");
   if(state.screen === "situations") return situationsView();
   return recipeView();
 }
@@ -1117,13 +1323,17 @@ function homeView(){
         <span class="vh-home-name">Cycle Tracker ${state.signedIn ? "" : ICON.lock}</span>
         <span class="vh-arrow">${ICON.arrow}</span>
       </button>
+      <button class="vh-home-link ${state.signedIn ? "" : "vh-home-link-disabled"}" data-nav="milk-home">
+        <span class="vh-home-name">Milk ${state.signedIn ? "" : ICON.lock}</span>
+        <span class="vh-arrow">${ICON.arrow}</span>
+      </button>
       <button class="vh-home-link" data-nav="recipe"><span class="vh-home-name">Recipe</span><span class="vh-arrow">${ICON.arrow}</span></button>
       <button class="vh-home-link" data-nav="situations"><span class="vh-home-name">Situations &amp; Solutions</span><span class="vh-arrow">${ICON.arrow}</span></button>
     </div>`;
 }
 
-function lockedView(){
-  return `<div class="vh-section-row"><div class="vh-section-title">Cycle Tracker ${ICON.lock}</div></div>`;
+function lockedView(title){
+  return `<div class="vh-section-row"><div class="vh-section-title">${esc(title || "Cycle Tracker")} ${ICON.lock}</div></div>`;
 }
 
 function computeRowsWithGaps(cyclesArr){
@@ -1193,6 +1403,143 @@ function cycleFormModal(){
         <div class="vh-modal-actions">
           <button class="vh-btn vh-btn-cancel" id="cycleCancelBtn" ${state.saving ? "disabled" : ""}>Cancel</button>
           <button class="vh-btn vh-btn-save" id="cycleSaveBtn" ${state.saving ? "disabled" : ""}>${state.saving ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ---- Milk views ---- */
+function milkEntriesForMonth(key){
+  return state.milkEntries
+    .filter(e => monthKey(e.date) === key && Number(e.litres) > 0)
+    .sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
+}
+function shiftMonth(key, delta){
+  let [y,m] = key.split("-").map(Number);
+  m += delta;
+  while(m < 1){ m += 12; y -= 1; }
+  while(m > 12){ m -= 12; y += 1; }
+  return `${y}-${String(m).padStart(2,"0")}`;
+}
+
+function milkView(){
+  if(state.milkLoading){
+    return `<div class="vh-section-row"><div class="vh-section-title">Milk</div></div><div class="vh-empty">Loading…</div>`;
+  }
+  const key = state.milkMonth || currentMonthKey();
+  const rows = milkEntriesForMonth(key);
+  const price = priceForMonth(key);
+  const totalLitres = rows.reduce((s,r) => s + (Number(r.litres)||0), 0);
+  const totalAmount = price != null ? totalLitres * price : null;
+  const isCurrent = key === currentMonthKey();
+  // Disable "next" beyond the current month — no future data to record.
+  const atFutureEdge = key >= currentMonthKey();
+
+  return `
+    <div class="vh-section-row">
+      <div class="vh-section-title">Milk</div>
+      ${isCurrent ? `<button class="vh-plus" id="addMilkBtn" aria-label="Add today's milk" ${state.saving ? "disabled" : ""}>+</button>` : ""}
+    </div>
+
+    <div class="vh-month-bar">
+      <button class="vh-month-nav" id="milkPrevMonth" aria-label="Previous month">‹</button>
+      <div class="vh-month-label">${monthLabel(key)}</div>
+      <button class="vh-month-nav" id="milkNextMonth" aria-label="Next month" ${atFutureEdge ? "disabled" : ""}>›</button>
+    </div>
+
+    <div class="vh-price-line">
+      <span>Price this month: <b>${price != null ? fmtMoney(price) + " / L" : "not set"}</b></span>
+      ${isCurrent ? `<button class="vh-price-edit" id="milkPriceBtn" ${state.saving ? "disabled" : ""}>${ICON.price} ${price != null ? "Update price" : "Set price"}</button>` : ""}
+    </div>
+
+    <div class="vh-summary">
+      <div class="vh-summary-card">
+        <div class="vh-summary-label">Total milk</div>
+        <div class="vh-summary-value">${fmtLitres(totalLitres)}</div>
+      </div>
+      <div class="vh-summary-card">
+        <div class="vh-summary-label">Total amount</div>
+        <div class="vh-summary-value">${totalAmount != null ? fmtMoney(totalAmount) : "—"}</div>
+      </div>
+    </div>
+
+    <div class="vh-table-wrap">
+      <div class="vh-table-scroll">
+        <table class="vh-table">
+          <thead><tr><th>Date</th><th>Qty</th><th>Amount</th>${isCurrent ? "<th>Actions</th>" : ""}</tr></thead>
+          <tbody>
+            ${rows.length === 0
+              ? `<tr><td colspan="${isCurrent ? 4 : 3}"><div class="vh-empty">No milk recorded ${isCurrent ? "yet this month." : "this month."}</div></td></tr>`
+              : rows.map(r => {
+                  const amt = price != null ? (Number(r.litres)||0) * price : null;
+                  return `
+                    <tr>
+                      <td>${formatDate(r.date)}</td>
+                      <td>${fmtLitres(r.litres)}</td>
+                      <td>${amt != null ? fmtMoney(amt) : "—"}</td>
+                      ${isCurrent ? `
+                        <td>
+                          <div class="vh-actions-cell">
+                            <button class="vh-icon-btn" data-edit-milk="${r.id}" aria-label="Edit entry" ${state.saving ? "disabled" : ""}>${ICON.edit}</button>
+                            <button class="vh-icon-btn danger" data-delete-milk="${r.id}" aria-label="Delete entry" ${state.saving ? "disabled" : ""}>${ICON.trash}</button>
+                          </div>
+                        </td>` : ""}
+                    </tr>`;
+                }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function milkFormModal(){
+  const f = state.milkForm;
+  const isEdit = f.mode === "edit";
+  const preset = [0.5, 1, 1.5];
+  const current = Number(f.litres) || 0;
+  const isPreset = preset.includes(current);
+  return `
+    <div class="vh-modal-scrim" id="milkModalScrim">
+      <div class="vh-modal" id="milkModal">
+        <div class="vh-modal-title">${isEdit ? "Edit Milk Entry" : "Add Milk"}</div>
+        <div class="vh-field">
+          <label for="milkDateInput">Date</label>
+          <input id="milkDateInput" type="date" value="${f.date || ""}" max="${todayISO()}" />
+        </div>
+        <div class="vh-field">
+          <label>Quantity (litres)</label>
+          <div class="vh-qty-options">
+            ${preset.map(q => `<button type="button" class="vh-qty-chip ${current === q ? "active" : ""}" data-milk-qty="${q}">${q}</button>`).join("")}
+          </div>
+        </div>
+        <div class="vh-field">
+          <label for="milkQtyInput">Or custom quantity</label>
+          <input id="milkQtyInput" type="number" inputmode="decimal" step="0.25" min="0" value="${!isPreset && current > 0 ? current : ""}" placeholder="e.g. 2" />
+          ${f.error ? `<div class="vh-field-error">${esc(f.error)}</div>` : ""}
+        </div>
+        <div class="vh-modal-actions">
+          <button class="vh-btn vh-btn-cancel" id="milkCancelBtn" ${state.saving ? "disabled" : ""}>Cancel</button>
+          <button class="vh-btn vh-btn-save" id="milkSaveBtn" ${state.saving ? "disabled" : ""}>${state.saving ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function milkPriceModal(){
+  const f = state.milkPriceForm;
+  return `
+    <div class="vh-modal-scrim" id="milkPriceScrim">
+      <div class="vh-modal" id="milkPriceModal">
+        <div class="vh-modal-title">Price for ${monthLabel(f.month)}</div>
+        <div class="vh-field">
+          <label for="milkPriceInput">Price per litre (₹)</label>
+          <input id="milkPriceInput" type="number" inputmode="decimal" step="0.5" min="0" value="${f.price !== "" ? f.price : ""}" placeholder="e.g. 54" />
+          ${f.error ? `<div class="vh-field-error">${esc(f.error)}</div>` : ""}
+        </div>
+        <div class="vh-price-line" style="margin-bottom:6px;"><span>Applies to ${monthLabel(f.month)} onward. Past months keep their own price.</span></div>
+        <div class="vh-modal-actions">
+          <button class="vh-btn vh-btn-cancel" id="milkPriceCancel" ${state.saving ? "disabled" : ""}>Cancel</button>
+          <button class="vh-btn vh-btn-save" id="milkPriceSave" ${state.saving ? "disabled" : ""}>${state.saving ? "Saving…" : "Save"}</button>
         </div>
       </div>
     </div>`;
@@ -1400,6 +1747,12 @@ function bindEvents(){
         setState({ screen: "cycle", drawerOpen: false });
         return;
       }
+      if(el.dataset.nav === "milk-home"){
+        if(!state.signedIn){ setState({ drawerOpen: false }); return; }
+        sessionStorage.setItem("vetrihub_screen", "milk");
+        setState({ screen: "milk", milkMonth: state.milkMonth || currentMonthKey(), drawerOpen: false });
+        return;
+      }
       sessionStorage.setItem("vetrihub_screen", el.dataset.nav);
       setState({ screen: el.dataset.nav, drawerOpen: false });
     })
@@ -1444,6 +1797,86 @@ function bindEvents(){
     render();
   });
   $("cycleConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "cycleConfirmScrim") setState({ cycleDeleteId: null }); });
+
+  // Milk — month navigation
+  $("milkPrevMonth")?.addEventListener("click", () => setState({ milkMonth: shiftMonth(state.milkMonth || currentMonthKey(), -1) }));
+  $("milkNextMonth")?.addEventListener("click", () => {
+    const next = shiftMonth(state.milkMonth || currentMonthKey(), 1);
+    if(next <= currentMonthKey()) setState({ milkMonth: next });
+  });
+
+  // Milk — add / edit / delete entry (current month only)
+  $("addMilkBtn")?.addEventListener("click", () => {
+    if(state.saving) return;
+    // Pre-fill today and 0.5 L (the usual daily buy); owner can change either.
+    setState({ milkForm: { mode: "add", date: todayISO(), litres: 0.5, error: "" } });
+  });
+  document.querySelectorAll("[data-edit-milk]").forEach(el =>
+    el.addEventListener("click", () => {
+      if(state.saving) return;
+      const e = state.milkEntries.find(x => x.id === el.dataset.editMilk);
+      if(e) setState({ milkForm: { mode: "edit", id: e.id, date: e.date, litres: e.litres, error: "" } });
+    })
+  );
+  document.querySelectorAll("[data-delete-milk]").forEach(el =>
+    el.addEventListener("click", () => { if(state.saving) return; setState({ milkDeleteId: el.dataset.deleteMilk }); })
+  );
+  // Quantity preset chips — set litres and clear the custom box
+  document.querySelectorAll("[data-milk-qty]").forEach(el =>
+    el.addEventListener("click", () => {
+      const q = Number(el.dataset.milkQty);
+      setState({ milkForm: { ...state.milkForm, litres: q, error: "" } });
+    })
+  );
+  $("milkModalScrim")?.addEventListener("click", (e) => { if(e.target.id === "milkModalScrim") setState({ milkForm: null }); });
+  $("milkCancelBtn")?.addEventListener("click", () => setState({ milkForm: null }));
+  $("milkSaveBtn")?.addEventListener("click", async () => {
+    if(state.saving) return;
+    const date = $("milkDateInput").value;
+    const customRaw = $("milkQtyInput").value.trim();
+    // Custom box wins if the owner typed something; otherwise use the chosen chip.
+    const litres = customRaw !== "" ? Number(customRaw) : Number(state.milkForm.litres) || 0;
+    if(!date){ setState({ milkForm: { ...state.milkForm, litres, error: "Date is required." } }); return; }
+    if(!(litres > 0)){ setState({ milkForm: { ...state.milkForm, litres, error: "Pick a quantity or enter a custom amount." } }); return; }
+    const snap = state.milkForm;
+    setState({ milkForm: null });
+    const ok = await upsertMilkEntry(date, litres, snap.mode === "edit" ? snap.id : null);
+    // Jump the view to the month of the saved entry so the owner sees it land.
+    if(ok) state.milkMonth = monthKey(date);
+    render();
+  });
+  $("milkConfirmCancel")?.addEventListener("click", () => setState({ milkDeleteId: null }));
+  $("milkConfirmDelete")?.addEventListener("click", async () => {
+    if(state.saving) return;
+    const idToDelete = state.milkDeleteId;
+    setState({ milkDeleteId: null });
+    await deleteMilkEntry(idToDelete);
+    render();
+  });
+  $("milkConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "milkConfirmScrim") setState({ milkDeleteId: null }); });
+
+  // Milk — price (current month only; applies current month onward)
+  $("milkPriceBtn")?.addEventListener("click", () => {
+    if(state.saving) return;
+    const key = currentMonthKey();
+    const existing = state.milkPrices[key];
+    setState({ milkPriceForm: { month: key, price: existing != null ? existing : "", error: "" } });
+  });
+  $("milkPriceScrim")?.addEventListener("click", (e) => { if(e.target.id === "milkPriceScrim") setState({ milkPriceForm: null }); });
+  $("milkPriceCancel")?.addEventListener("click", () => setState({ milkPriceForm: null }));
+  $("milkPriceSave")?.addEventListener("click", async () => {
+    if(state.saving) return;
+    const raw = $("milkPriceInput").value.trim();
+    const price = Number(raw);
+    if(raw === "" || !(price >= 0)){ setState({ milkPriceForm: { ...state.milkPriceForm, price: raw, error: "Enter a valid price." } }); return; }
+    const snap = state.milkPriceForm;
+    // Store the price ONLY on this month's key. Past months are untouched;
+    // priceForMonth() carries this value forward to future months until changed.
+    const nextPrices = { ...state.milkPrices, [snap.month]: price };
+    setState({ milkPriceForm: null });
+    await saveMilkPrices(nextPrices);
+    render();
+  });
 
   // Recipe
   $("pendingFilterBtn")?.addEventListener("click", () => {
