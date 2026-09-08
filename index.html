@@ -179,6 +179,24 @@
   .vh-clear-link{ display: block; width: 100%; background: none; border: none; color: var(--danger); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; padding: 12px 0 0; margin-top: 4px; cursor: pointer; text-align: center; }
   .vh-clear-link:hover{ text-decoration: underline; }
   .vh-clear-link:disabled{ opacity: 0.5; cursor: default; }
+
+  .vh-milk-tabs{ display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 4px; margin-bottom: 16px; }
+  .vh-milk-tab{ flex: 1; background: none; border: none; color: var(--text-dim); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; padding: 9px 0; border-radius: 8px; cursor: pointer; }
+  .vh-milk-tab.active{ background: var(--accent); color: #23272f; }
+
+  .vh-year-list{ display: flex; flex-direction: column; gap: 10px; }
+  .vh-year-item{ border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+  .vh-year-head{ display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 15px 16px; cursor: pointer; color: var(--text); }
+  .vh-year-name{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 17px; }
+  .vh-year-sum{ flex: 1; text-align: right; color: var(--text-dim); font-size: 13.5px; }
+  .vh-year-body{ border-top: 1px solid var(--border); padding: 6px 0; }
+  .vh-year-mrow{ display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1fr; gap: 6px; padding: 10px 16px; font-size: 13.5px; align-items: center; }
+  .vh-year-mrow span:nth-child(n+2){ text-align: right; }
+  .vh-year-mhead{ color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 10.5px; font-weight: 600; padding-top: 6px; padding-bottom: 6px; }
+  .vh-year-mname{ font-weight: 500; }
+  .vh-year-mprice{ color: var(--text-dim); font-size: 12.5px; }
+  .vh-year-total{ display: grid; grid-template-columns: 1.4fr 1fr 1.1fr 1fr; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--border); margin-top: 4px; font-family: 'Sora', sans-serif; font-weight: 700; font-size: 14px; }
+  .vh-year-total span:nth-child(n+2){ text-align: right; }
 </style>
 </head>
 <body>
@@ -261,6 +279,8 @@ const state = {
   milkPrices: {},         // { "YYYY-MM": Number }  price locked per month
   milkLoading: false,
   milkMonth: "",          // "YYYY-MM" currently viewed; defaults to current month
+  milkTab: "grid",        // "grid" (daily) | "year" (yearly summary)
+  milkExpandedYear: null, // which year is expanded in the yearly view
   milkForm: null,         // { date, litres, entryId, error }
   milkPriceForm: null,    // { month, price, error }
   recipes: [],
@@ -703,13 +723,10 @@ function monthLabel(key){ if(!key) return "—"; const [y,m] = key.split("-").ma
 function fmtLitres(n){ const v = Number(n)||0; return (Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/,"")) + " L"; }
 function fmtMoney(n){ const v = Number(n)||0; return "₹" + (Number.isInteger(v) ? v : v.toFixed(2)); }
 
-/* Effective price for a month: its own stored price if set, else the most
-   recent stored price from an EARLIER month (a price set now carries forward
-   to future months until changed, but never rewrites the past). */
+/* Price for a month = whatever is manually stored for THAT month, or null.
+   No carry-forward — each month is independent and set by hand. */
 function priceForMonth(key){
-  if(state.milkPrices[key] != null) return state.milkPrices[key];
-  const earlier = Object.keys(state.milkPrices).filter(k => k < key).sort();
-  return earlier.length ? state.milkPrices[earlier[earlier.length-1]] : null;
+  return state.milkPrices[key] != null ? state.milkPrices[key] : null;
 }
 
 async function loadMilk(){
@@ -1437,6 +1454,20 @@ function milkView(){
   if(state.milkLoading){
     return `<div class="vh-section-row"><div class="vh-section-title">Milk</div></div><div class="vh-empty">Loading…</div>`;
   }
+  const tab = state.milkTab || "grid";
+  const toggle = `
+    <div class="vh-milk-tabs">
+      <button class="vh-milk-tab ${tab==="grid"?"active":""}" id="milkTabGrid">Daily</button>
+      <button class="vh-milk-tab ${tab==="year"?"active":""}" id="milkTabYear">Yearly</button>
+    </div>`;
+
+  if(tab === "year"){
+    return `
+      <div class="vh-section-row"><div class="vh-section-title">Milk</div></div>
+      ${toggle}
+      ${milkYearView()}`;
+  }
+
   const key = state.milkMonth || currentMonthKey();
   const price = priceForMonth(key);
   const grid = milkMonthGrid(key);
@@ -1444,13 +1475,13 @@ function milkView(){
   const totalLitres = boughtDays.reduce((s,g) => s + (Number(g.litres)||0), 0);
   const totalAmount = price != null ? totalLitres * price : null;
   const gapCount = grid.filter(g => g.state === "unmarked").length;
-  const isCurrent = key === currentMonthKey();
   const atFutureEdge = key >= currentMonthKey();
 
   return `
     <div class="vh-section-row">
       <div class="vh-section-title">Milk</div>
     </div>
+    ${toggle}
 
     <div class="vh-month-bar">
       <button class="vh-month-nav" id="milkPrevMonth" aria-label="Previous month">‹</button>
@@ -1460,7 +1491,7 @@ function milkView(){
 
     <div class="vh-price-line">
       <span>Price this month: <b>${price != null ? fmtMoney(price) + " / L" : "not set"}</b></span>
-      ${isCurrent ? `<button class="vh-price-edit" id="milkPriceBtn" ${state.saving ? "disabled" : ""}>${ICON.price} ${price != null ? "Update price" : "Set price"}</button>` : ""}
+      <button class="vh-price-edit" id="milkPriceBtn" ${state.saving ? "disabled" : ""}>${ICON.price} ${price != null ? "Update price" : "Set price"}</button>
     </div>
 
     <div class="vh-summary">
@@ -1490,6 +1521,64 @@ function milkView(){
           </button>`;
       }).join("")}
     </div>`;
+}
+
+/* Yearly summary — years listed newest-first, each expandable to month rows
+   (litres, amount, price) with a year grand-total at the bottom. */
+function milkYearView(){
+  // Collect every year that has any bought entry.
+  const byYearMonth = {};   // { year: { "YYYY-MM": litres } }
+  state.milkEntries.forEach(e => {
+    if(!(Number(e.litres) > 0)) return;
+    const y = e.date.slice(0,4);
+    const mk = monthKey(e.date);
+    byYearMonth[y] = byYearMonth[y] || {};
+    byYearMonth[y][mk] = (byYearMonth[y][mk] || 0) + Number(e.litres);
+  });
+  const years = Object.keys(byYearMonth).sort().reverse();
+  if(years.length === 0){
+    return `<div class="vh-empty">No milk recorded yet.</div>`;
+  }
+  return `<div class="vh-year-list">${years.map(y => {
+    const open = state.milkExpandedYear === y;
+    const months = Object.keys(byYearMonth[y]).sort(); // Jan→Dec
+    let yearLitres = 0, yearAmount = 0, yearAmountKnown = true;
+    const rows = months.map(mk => {
+      const litres = byYearMonth[y][mk];
+      const price = priceForMonth(mk);
+      const amount = price != null ? litres * price : null;
+      yearLitres += litres;
+      if(amount != null) yearAmount += amount; else yearAmountKnown = false;
+      return `
+        <div class="vh-year-mrow">
+          <span class="vh-year-mname">${monthLabel(mk)}</span>
+          <span class="vh-year-mlitres">${fmtLitres(litres)}</span>
+          <span class="vh-year-mamt">${amount != null ? fmtMoney(amount) : "—"}</span>
+          <span class="vh-year-mprice">${price != null ? fmtMoney(price) + "/L" : "no price"}</span>
+        </div>`;
+    }).join("");
+    return `
+      <div class="vh-year-item">
+        <button class="vh-year-head" data-milk-year="${y}">
+          <span class="vh-year-name">${y}</span>
+          <span class="vh-year-sum">${fmtLitres(yearLitres)}${yearAmountKnown ? " · " + fmtMoney(yearAmount) : ""}</span>
+          <span class="vh-chevron ${open?"open":""}">${ICON.chevron}</span>
+        </button>
+        ${open ? `
+          <div class="vh-year-body">
+            <div class="vh-year-mrow vh-year-mhead">
+              <span>Month</span><span>Litres</span><span>Amount</span><span>Price</span>
+            </div>
+            ${rows}
+            <div class="vh-year-total">
+              <span>Year total</span>
+              <span>${fmtLitres(yearLitres)}</span>
+              <span>${yearAmountKnown ? fmtMoney(yearAmount) : "—"}</span>
+              <span></span>
+            </div>
+          </div>` : ""}
+      </div>`;
+  }).join("")}</div>`;
 }
 
 function milkFormModal(){
@@ -1535,7 +1624,7 @@ function milkPriceModal(){
           <input id="milkPriceInput" type="number" inputmode="decimal" step="0.5" min="0" value="${f.price !== "" ? f.price : ""}" placeholder="e.g. 54" />
           ${f.error ? `<div class="vh-field-error">${esc(f.error)}</div>` : ""}
         </div>
-        <div class="vh-price-line" style="margin-bottom:6px;"><span>Applies to ${monthLabel(f.month)} onward. Past months keep their own price.</span></div>
+        <div class="vh-price-line" style="margin-bottom:6px;"><span>Sets the price for ${monthLabel(f.month)} only. Each month is set on its own.</span></div>
         <div class="vh-modal-actions">
           <button class="vh-btn vh-btn-cancel" id="milkPriceCancel" ${state.saving ? "disabled" : ""}>Cancel</button>
           <button class="vh-btn vh-btn-save" id="milkPriceSave" ${state.saving ? "disabled" : ""}>${state.saving ? "Saving…" : "Save"}</button>
@@ -1797,6 +1886,17 @@ function bindEvents(){
   });
   $("cycleConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "cycleConfirmScrim") setState({ cycleDeleteId: null }); });
 
+  // Milk — Daily / Yearly tab toggle
+  $("milkTabGrid")?.addEventListener("click", () => setState({ milkTab: "grid" }));
+  $("milkTabYear")?.addEventListener("click", () => setState({ milkTab: "year" }));
+  // Milk — expand/collapse a year in the yearly summary
+  document.querySelectorAll("[data-milk-year]").forEach(el =>
+    el.addEventListener("click", () => {
+      const y = el.dataset.milkYear;
+      setState({ milkExpandedYear: state.milkExpandedYear === y ? null : y });
+    })
+  );
+
   // Milk — month navigation
   $("milkPrevMonth")?.addEventListener("click", () => setState({ milkMonth: shiftMonth(state.milkMonth || currentMonthKey(), -1) }));
   $("milkNextMonth")?.addEventListener("click", () => {
@@ -1854,7 +1954,7 @@ function bindEvents(){
   // Milk — price (current month only; applies current month onward)
   $("milkPriceBtn")?.addEventListener("click", () => {
     if(state.saving) return;
-    const key = currentMonthKey();
+    const key = state.milkMonth || currentMonthKey();
     const existing = state.milkPrices[key];
     setState({ milkPriceForm: { month: key, price: existing != null ? existing : "", error: "" } });
   });
