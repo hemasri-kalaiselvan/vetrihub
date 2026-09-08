@@ -185,8 +185,8 @@ const CONFIG = {
   // Milk — PRIVATE, owner only, same pattern as Cycle Tracker. Created on
   // first sign-in if missing. Two tabs: "Entries" (Date, Litres) and
   // "Prices" (Month YYYY-MM, PricePerLitre).
-  MILK_SHEET_ID: "",
-  SCOPES: "openid email https://www.googleapis.com/auth/drive.file"
+  MILK_SHEET_ID: "1NoASLNpAyygqCBz_yzOpGcpl6_nraK4ji6Y-bQxDP-A",
+  SCOPES: "openid email https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets"
 };
 
 /* =========================================================
@@ -394,7 +394,6 @@ async function verifyAndSignIn(token, expiresInSeconds){
     cacheToken(token, expiresInSeconds);
     setState({ signedIn: true, accessToken: token });
     await ensureAppFiles(token);
-    await organizeFilesIntoFolder(token);
     await loadCycles();
     await loadMilk();
   }catch(e){
@@ -521,7 +520,6 @@ async function ensureAppFiles(token){
       })
     });
     if(!hdr.ok){ console.error("VetriHub: milk sheet header write failed", hdr.status, await hdr.text()); }
-    localStorage.removeItem("vetrihub_files_organized"); // re-run organizer once to file the new sheet
     created = true;
   }
 
@@ -538,44 +536,15 @@ async function ensureAppFiles(token){
   }
 }
 
-/* Moves all four app files into a single "VetriHub" folder in Drive, so
-   they're not scattered loose at the top level. Runs once — a localStorage
-   flag skips it on every later sign-in. */
+/* One-time folder migration — RETIRED.
+   The files were already moved into the "VetriHub" Drive folder once, and
+   the app finds every file by its hardcoded CONFIG ID regardless of which
+   folder it sits in. This routine used a localStorage flag to run once, but
+   localStorage is wiped in incognito / cleared data / new devices, which made
+   it re-run and create duplicate empty folders. Since the migration is done,
+   it is permanently disabled — it now does nothing. */
 async function organizeFilesIntoFolder(token){
-  if(localStorage.getItem("vetrihub_files_organized") === "1") return;
-  if(!state.sheetId || !state.recipesSheetId || !state.situationsSheetId || !state.docId || !state.milkSheetId) return;
-  const authHeader = { Authorization: "Bearer " + token };
-  try{
-    let folderId = localStorage.getItem("vetrihub_folder_id");
-    if(!folderId){
-      const res = await fetch("https://www.googleapis.com/drive/v3/files", {
-        method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "VetriHub", mimeType: "application/vnd.google-apps.folder" })
-      });
-      if(!res.ok){ console.error("VetriHub: folder create failed", res.status, await res.text()); return; }
-      const data = await res.json();
-      folderId = data.id;
-      localStorage.setItem("vetrihub_folder_id", folderId);
-    }
-
-    const fileIds = [state.sheetId, state.recipesSheetId, state.situationsSheetId, state.docId, state.milkSheetId];
-    for(const fileId of fileIds){
-      const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`, { headers: authHeader });
-      if(!metaRes.ok){ console.error("VetriHub: couldn't read parents for", fileId, metaRes.status); continue; }
-      const meta = await metaRes.json();
-      const oldParents = (meta.parents || []).join(",");
-      const moveRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${folderId}${oldParents ? "&removeParents=" + oldParents : ""}`, {
-        method: "PATCH",
-        headers: authHeader
-      });
-      if(!moveRes.ok){ console.error("VetriHub: couldn't move file into folder", fileId, moveRes.status, await moveRes.text()); }
-    }
-    localStorage.setItem("vetrihub_files_organized", "1");
-    console.log("VetriHub: all files organized into VetriHub folder " + folderId);
-  }catch(e){
-    console.error("VetriHub: organizeFilesIntoFolder error", e);
-  }
+  return;
 }
 
 function applySavedScreen(){
