@@ -157,6 +157,28 @@
   .vh-qty-chip{ background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 4px; font-family: 'Sora', sans-serif; font-weight: 600; font-size: 15px; cursor: pointer; flex: 1; min-width: 60px; text-align: center; }
   .vh-qty-chip:hover{ border-color: var(--accent); }
   .vh-qty-chip.active{ background: var(--accent); color: #23272f; border-color: var(--accent); }
+  .vh-qty-skip{ color: var(--text-dim); }
+  .vh-qty-skip.active{ background: var(--text-dim); color: var(--bg); border-color: var(--text-dim); }
+
+  .vh-gap-note{ background: var(--accent-dim); color: var(--accent); border-radius: 10px; padding: 10px 13px; font-size: 13px; font-weight: 500; margin-bottom: 14px; }
+  .vh-daygrid{ display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+  .vh-day-row{ display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; padding: 14px 14px; cursor: pointer; color: var(--text); font-family: 'Inter', sans-serif; }
+  .vh-day-row:last-child{ border-bottom: none; }
+  .vh-day-row:hover:not(:disabled){ background: var(--surface-2); }
+  .vh-day-row:disabled{ cursor: default; }
+  .vh-day-date{ font-size: 14.5px; font-weight: 500; }
+  .vh-day-right{ display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .vh-day-qty{ font-family: 'Sora', sans-serif; font-weight: 600; }
+  .vh-day-amt{ color: var(--text-dim); font-size: 13px; }
+  .vh-day-skip{ color: var(--text-dim); font-size: 13px; }
+  /* Unmarked = a real gap: highlighted so it stands out to be filled in. */
+  .vh-day-unmarked{ border-left-color: var(--accent); background: var(--accent-dim); }
+  .vh-day-unmarked:hover:not(:disabled){ background: var(--accent-dim); }
+  .vh-day-unmarked .vh-day-date{ color: var(--accent); }
+  .vh-day-nr{ color: var(--accent); font-size: 12.5px; font-weight: 600; }
+  .vh-clear-link{ display: block; width: 100%; background: none; border: none; color: var(--danger); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; padding: 12px 0 0; margin-top: 4px; cursor: pointer; text-align: center; }
+  .vh-clear-link:hover{ text-decoration: underline; }
+  .vh-clear-link:disabled{ opacity: 0.5; cursor: default; }
 </style>
 </head>
 <body>
@@ -239,8 +261,7 @@ const state = {
   milkPrices: {},         // { "YYYY-MM": Number }  price locked per month
   milkLoading: false,
   milkMonth: "",          // "YYYY-MM" currently viewed; defaults to current month
-  milkForm: null,         // { mode, id, date, litres, error }
-  milkDeleteId: null,
+  milkForm: null,         // { date, litres, entryId, error }
   milkPriceForm: null,    // { month, price, error }
   recipes: [],
   recipesLoading: true,
@@ -1239,7 +1260,6 @@ function render(){
     ${state.cycleDeleteId ? confirmModal("Delete this cycle entry? This cannot be undone.", "cycle") : ""}
     ${state.milkForm ? milkFormModal() : ""}
     ${state.milkPriceForm ? milkPriceModal() : ""}
-    ${state.milkDeleteId ? confirmModal("Delete this milk entry? This cannot be undone.", "milk") : ""}
     ${state.recipeForm ? recipeFormModal() : ""}
     ${state.recipeDeleteId ? confirmModal("Delete this recipe? This cannot be undone.", "recipe") : ""}
     ${state.situationForm ? situationFormModal() : ""}
@@ -1378,11 +1398,6 @@ function cycleFormModal(){
 }
 
 /* ---- Milk views ---- */
-function milkEntriesForMonth(key){
-  return state.milkEntries
-    .filter(e => monthKey(e.date) === key && Number(e.litres) > 0)
-    .sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
-}
 function shiftMonth(key, delta){
   let [y,m] = key.split("-").map(Number);
   m += delta;
@@ -1390,24 +1405,51 @@ function shiftMonth(key, delta){
   while(m > 12){ m -= 12; y += 1; }
   return `${y}-${String(m).padStart(2,"0")}`;
 }
+function daysInMonth(key){ const [y,m] = key.split("-").map(Number); return new Date(y, m, 0).getDate(); }
+function isoForDay(key, day){ return `${key}-${String(day).padStart(2,"0")}`; }
+// Map every date in the month to its recorded entry (if any). One entry per date.
+function milkEntryByDate(iso){ return state.milkEntries.find(e => e.date === iso); }
+/* Build the day grid for a month, oldest→newest. Current month lists day 1
+   through TODAY only (no future dates). Past months list the whole month.
+   Each day is:
+   - "bought"    entry with litres > 0
+   - "skip"      entry with litres === 0 (explicitly "no milk")
+   - "unmarked"  no entry — a real gap to fill */
+function milkMonthGrid(key){
+  const today = todayISO();
+  const isCurrent = key === currentMonthKey();
+  // Current month stops at today's day number; past months run the full month.
+  const lastDay = isCurrent ? new Date().getDate() : daysInMonth(key);
+  const out = [];
+  for(let d = 1; d <= lastDay; d++){
+    const iso = isoForDay(key, d);
+    const entry = milkEntryByDate(iso);
+    let statev;
+    if(entry){ statev = (Number(entry.litres) > 0) ? "bought" : "skip"; }
+    else { statev = "unmarked"; }
+    out.push({ iso, day: d, state: statev, litres: entry ? Number(entry.litres) : null, entryId: entry ? entry.id : null });
+  }
+  out.reverse(); // newest date on top — today is where the owner lands each day
+  return out;
+}
 
 function milkView(){
   if(state.milkLoading){
     return `<div class="vh-section-row"><div class="vh-section-title">Milk</div></div><div class="vh-empty">Loading…</div>`;
   }
   const key = state.milkMonth || currentMonthKey();
-  const rows = milkEntriesForMonth(key);
   const price = priceForMonth(key);
-  const totalLitres = rows.reduce((s,r) => s + (Number(r.litres)||0), 0);
+  const grid = milkMonthGrid(key);
+  const boughtDays = grid.filter(g => g.state === "bought");
+  const totalLitres = boughtDays.reduce((s,g) => s + (Number(g.litres)||0), 0);
   const totalAmount = price != null ? totalLitres * price : null;
+  const gapCount = grid.filter(g => g.state === "unmarked").length;
   const isCurrent = key === currentMonthKey();
-  // Disable "next" beyond the current month — no future data to record.
   const atFutureEdge = key >= currentMonthKey();
 
   return `
     <div class="vh-section-row">
       <div class="vh-section-title">Milk</div>
-      ${isCurrent ? `<button class="vh-plus" id="addMilkBtn" aria-label="Add today's milk" ${state.saving ? "disabled" : ""}>+</button>` : ""}
     </div>
 
     <div class="vh-month-bar">
@@ -1432,64 +1474,52 @@ function milkView(){
       </div>
     </div>
 
-    <div class="vh-table-wrap">
-      <div class="vh-table-scroll">
-        <table class="vh-table">
-          <thead><tr><th>Date</th><th>Qty</th><th>Amount</th>${isCurrent ? "<th>Actions</th>" : ""}</tr></thead>
-          <tbody>
-            ${rows.length === 0
-              ? `<tr><td colspan="${isCurrent ? 4 : 3}"><div class="vh-empty">No milk recorded ${isCurrent ? "yet this month." : "this month."}</div></td></tr>`
-              : rows.map(r => {
-                  const amt = price != null ? (Number(r.litres)||0) * price : null;
-                  return `
-                    <tr>
-                      <td>${formatDate(r.date)}</td>
-                      <td>${fmtLitres(r.litres)}</td>
-                      <td>${amt != null ? fmtMoney(amt) : "—"}</td>
-                      ${isCurrent ? `
-                        <td>
-                          <div class="vh-actions-cell">
-                            <button class="vh-icon-btn" data-edit-milk="${r.id}" aria-label="Edit entry" ${state.saving ? "disabled" : ""}>${ICON.edit}</button>
-                            <button class="vh-icon-btn danger" data-delete-milk="${r.id}" aria-label="Delete entry" ${state.saving ? "disabled" : ""}>${ICON.trash}</button>
-                          </div>
-                        </td>` : ""}
-                    </tr>`;
-                }).join("")}
-          </tbody>
-        </table>
-      </div>
+    ${gapCount > 0 ? `<div class="vh-gap-note">${gapCount} day${gapCount>1?"s":""} not recorded — tap a highlighted day to fill it in.</div>` : ""}
+
+    <div class="vh-daygrid">
+      ${grid.map(g => {
+        const amt = (g.state === "bought" && price != null) ? g.litres * price : null;
+        let right;
+        if(g.state === "bought"){ right = `<span class="vh-day-qty">${fmtLitres(g.litres)}</span>${amt != null ? `<span class="vh-day-amt">${fmtMoney(amt)}</span>` : ""}`; }
+        else if(g.state === "skip"){ right = `<span class="vh-day-skip">No milk</span>`; }
+        else { right = `<span class="vh-day-nr">Not recorded</span>`; }
+        return `
+          <button class="vh-day-row vh-day-${g.state}" data-milk-day="${g.iso}" ${state.saving ? "disabled" : ""}>
+            <span class="vh-day-date">${formatDate(g.iso)}</span>
+            <span class="vh-day-right">${right}</span>
+          </button>`;
+      }).join("")}
     </div>`;
 }
 
 function milkFormModal(){
   const f = state.milkForm;
-  const isEdit = f.mode === "edit";
   const preset = [0.5, 1, 1.5];
   const current = Number(f.litres) || 0;
-  const isPreset = preset.includes(current);
+  const isSkip = f.litres === 0;               // explicitly "no milk"
+  const isPreset = preset.includes(current) && current > 0;
+  const hasEntry = !!f.entryId;                // already recorded — allow clear
   return `
     <div class="vh-modal-scrim" id="milkModalScrim">
       <div class="vh-modal" id="milkModal">
-        <div class="vh-modal-title">${isEdit ? "Edit Milk Entry" : "Add Milk"}</div>
-        <div class="vh-field">
-          <label for="milkDateInput">Date</label>
-          <input id="milkDateInput" type="date" value="${f.date || ""}" max="${todayISO()}" />
-        </div>
+        <div class="vh-modal-title">${formatDate(f.date)}</div>
         <div class="vh-field">
           <label>Quantity (litres)</label>
           <div class="vh-qty-options">
             ${preset.map(q => `<button type="button" class="vh-qty-chip ${current === q ? "active" : ""}" data-milk-qty="${q}">${q}</button>`).join("")}
+            <button type="button" class="vh-qty-chip vh-qty-skip ${isSkip ? "active" : ""}" data-milk-qty="0">No milk</button>
           </div>
         </div>
         <div class="vh-field">
           <label for="milkQtyInput">Or custom quantity</label>
-          <input id="milkQtyInput" type="number" inputmode="decimal" step="0.25" min="0" value="${!isPreset && current > 0 ? current : ""}" placeholder="e.g. 2" />
+          <input id="milkQtyInput" type="number" inputmode="decimal" step="0.25" min="0" value="${!isPreset && !isSkip && current > 0 ? current : ""}" placeholder="e.g. 2" />
           ${f.error ? `<div class="vh-field-error">${esc(f.error)}</div>` : ""}
         </div>
         <div class="vh-modal-actions">
           <button class="vh-btn vh-btn-cancel" id="milkCancelBtn" ${state.saving ? "disabled" : ""}>Cancel</button>
           <button class="vh-btn vh-btn-save" id="milkSaveBtn" ${state.saving ? "disabled" : ""}>${state.saving ? "Saving…" : "Save"}</button>
         </div>
+        ${hasEntry ? `<button class="vh-clear-link" id="milkClearBtn" ${state.saving ? "disabled" : ""}>Clear this day (back to not recorded)</button>` : ""}
       </div>
     </div>`;
 }
@@ -1774,23 +1804,18 @@ function bindEvents(){
     if(next <= currentMonthKey()) setState({ milkMonth: next });
   });
 
-  // Milk — add / edit / delete entry (current month only)
-  $("addMilkBtn")?.addEventListener("click", () => {
-    if(state.saving) return;
-    // Pre-fill today and 0.5 L (the usual daily buy); owner can change either.
-    setState({ milkForm: { mode: "add", date: todayISO(), litres: 0.5, error: "" } });
-  });
-  document.querySelectorAll("[data-edit-milk]").forEach(el =>
+  // Milk — tap any day to set/edit its state (bought / no milk / clear)
+  document.querySelectorAll("[data-milk-day]").forEach(el =>
     el.addEventListener("click", () => {
       if(state.saving) return;
-      const e = state.milkEntries.find(x => x.id === el.dataset.editMilk);
-      if(e) setState({ milkForm: { mode: "edit", id: e.id, date: e.date, litres: e.litres, error: "" } });
+      const iso = el.dataset.milkDay;
+      const entry = state.milkEntries.find(x => x.date === iso);
+      // Prefill from the existing entry: litres>0 bought, 0 skip, none => blank.
+      const litres = entry ? Number(entry.litres) : "";
+      setState({ milkForm: { date: iso, litres, entryId: entry ? entry.id : null, error: "" } });
     })
   );
-  document.querySelectorAll("[data-delete-milk]").forEach(el =>
-    el.addEventListener("click", () => { if(state.saving) return; setState({ milkDeleteId: el.dataset.deleteMilk }); })
-  );
-  // Quantity preset chips — set litres and clear the custom box
+  // Quantity / skip chips — set litres (0 = "No milk") and clear the custom box
   document.querySelectorAll("[data-milk-qty]").forEach(el =>
     el.addEventListener("click", () => {
       const q = Number(el.dataset.milkQty);
@@ -1801,28 +1826,30 @@ function bindEvents(){
   $("milkCancelBtn")?.addEventListener("click", () => setState({ milkForm: null }));
   $("milkSaveBtn")?.addEventListener("click", async () => {
     if(state.saving) return;
-    const date = $("milkDateInput").value;
+    const snap = state.milkForm;
     const customRaw = $("milkQtyInput").value.trim();
-    // Custom box wins if the owner typed something; otherwise use the chosen chip.
-    const litres = customRaw !== "" ? Number(customRaw) : Number(state.milkForm.litres) || 0;
-    if(!date){ setState({ milkForm: { ...state.milkForm, litres, error: "Date is required." } }); return; }
-    if(!(litres > 0)){ setState({ milkForm: { ...state.milkForm, litres, error: "Pick a quantity or enter a custom amount." } }); return; }
+    // Custom box wins if typed; else use the chosen chip (0 means "No milk").
+    let litres;
+    if(customRaw !== ""){ litres = Number(customRaw); }
+    else { litres = (snap.litres === "" ? NaN : Number(snap.litres)); }
+    if(Number.isNaN(litres) || litres < 0){
+      setState({ milkForm: { ...snap, error: "Pick a quantity, choose No milk, or enter a custom amount." } });
+      return;
+    }
+    setState({ milkForm: null });
+    // litres === 0 stores an explicit "No milk" row; >0 stores the purchase.
+    const ok = await upsertMilkEntry(snap.date, litres, snap.entryId);
+    if(ok) state.milkMonth = monthKey(snap.date);
+    render();
+  });
+  // Clear this day — delete the row entirely, back to "not recorded"
+  $("milkClearBtn")?.addEventListener("click", async () => {
+    if(state.saving) return;
     const snap = state.milkForm;
     setState({ milkForm: null });
-    const ok = await upsertMilkEntry(date, litres, snap.mode === "edit" ? snap.id : null);
-    // Jump the view to the month of the saved entry so the owner sees it land.
-    if(ok) state.milkMonth = monthKey(date);
+    if(snap.entryId){ await deleteMilkEntry(snap.entryId); }
     render();
   });
-  $("milkConfirmCancel")?.addEventListener("click", () => setState({ milkDeleteId: null }));
-  $("milkConfirmDelete")?.addEventListener("click", async () => {
-    if(state.saving) return;
-    const idToDelete = state.milkDeleteId;
-    setState({ milkDeleteId: null });
-    await deleteMilkEntry(idToDelete);
-    render();
-  });
-  $("milkConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "milkConfirmScrim") setState({ milkDeleteId: null }); });
 
   // Milk — price (current month only; applies current month onward)
   $("milkPriceBtn")?.addEventListener("click", () => {
