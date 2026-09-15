@@ -38,7 +38,7 @@
   @keyframes slidein{ from{ transform: translateX(-100%); } to{ transform: translateX(0); } }
   @keyframes fade{ from{ opacity: 0; } to{ opacity: 1; } }
   .vh-drawer-title{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 18px; padding: 0 22px 18px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-  .vh-drawer-item{ background: none; border: none; color: var(--text); text-align: left; font-family: 'Inter', sans-serif; font-size: 15.5px; font-weight: 500; padding: 13px 22px; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 8px; }
+  .vh-drawer-item{ background: none; border: none; color: var(--text); text-align: left; font-family: 'Inter', sans-serif; font-size: 15.5px; font-weight: 500; padding: 13px 22px; cursor: pointer; width: 100%; display: flex; align-items: center; gap: 8px; text-decoration: none; box-sizing: border-box; }
   .vh-drawer-item:hover:not(.disabled), .vh-drawer-item.active{ background: var(--surface-2); color: var(--accent); }
   .vh-drawer-item.disabled{ color: var(--text-dim); cursor: default; }
   .vh-drawer-divider{ border: none; border-top: 1px solid var(--border); margin: 8px 0; }
@@ -47,7 +47,7 @@
   .vh-main{ flex: 1; padding: 8px 20px 40px; }
 
   .vh-home-list{ margin-top: 10px; display: flex; flex-direction: column; }
-  .vh-home-link{ display: flex; align-items: center; justify-content: space-between; background: none; border: none; border-bottom: 1px solid var(--border); padding: 22px 4px; width: 100%; cursor: pointer; color: var(--text); }
+  .vh-home-link{ display: flex; align-items: center; justify-content: space-between; background: none; border: none; border-bottom: 1px solid var(--border); padding: 22px 4px; width: 100%; cursor: pointer; color: var(--text); text-decoration: none; }
   .vh-home-link:hover .vh-home-name{ color: var(--accent); }
   .vh-home-name{ font-family: 'Sora', sans-serif; font-size: 19px; font-weight: 600; transition: color .15s ease; display: flex; align-items: center; gap: 6px; }
   .vh-home-link-disabled{ opacity: 0.45; cursor: default; }
@@ -229,6 +229,8 @@ const CONFIG = {
   // first sign-in if missing. Two tabs: "Entries" (Date, Litres) and
   // "Prices" (Month YYYY-MM, PricePerLitre).
   MILK_SHEET_ID: "1NoASLNpAyygqCBz_yzOpGcpI6_nraK4ji6Y-bQxDP-A",
+  // Word Finder — a separate site; VetriHub links out to it as a tool.
+  WORD_FINDER_URL: "https://hemasri-kalaiselvan.github.io/word-finder/",
   SCOPES: "openid email https://www.googleapis.com/auth/drive.file"
 };
 
@@ -250,7 +252,8 @@ const ICON = {
   ulist: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>',
   price: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
   refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
-  chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
+  chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  external: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;opacity:.6"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
 };
 
 /* =========================================================
@@ -1385,6 +1388,7 @@ function drawer(){
       </button>
       <button class="vh-drawer-item ${state.screen==="recipe"?"active":""}" data-nav="recipe">Recipe</button>
       <button class="vh-drawer-item ${state.screen==="situations"?"active":""}" data-nav="situations">Situations &amp; Solutions</button>
+      <a class="vh-drawer-item vh-ext-link" href="${CONFIG.WORD_FINDER_URL}" target="_blank" rel="noopener">Word Finder ${ICON.external}</a>
       <hr class="vh-drawer-divider" />
       <button class="vh-drawer-item" id="authBtn">${state.signedIn ? "Sign out" : "Sign in"}</button>
     </nav>`;
@@ -1411,6 +1415,7 @@ function homeView(){
       </button>
       <button class="vh-home-link" data-nav="recipe"><span class="vh-home-name">Recipe</span><span class="vh-arrow">${ICON.arrow}</span></button>
       <button class="vh-home-link" data-nav="situations"><span class="vh-home-name">Situations &amp; Solutions</span><span class="vh-arrow">${ICON.arrow}</span></button>
+      <a class="vh-home-link" href="${CONFIG.WORD_FINDER_URL}" target="_blank" rel="noopener"><span class="vh-home-name">Word Finder ${ICON.external}</span><span class="vh-arrow">${ICON.arrow}</span></a>
     </div>`;
 }
 
@@ -1907,6 +1912,10 @@ function bindEvents(){
 
   $("burgerBtn")?.addEventListener("click", () => setState({ drawerOpen: true }));
   $("scrim")?.addEventListener("click", () => setState({ drawerOpen: false }));
+  // External-link tools (e.g. Word Finder) open in a new tab; close the drawer.
+  document.querySelectorAll(".vh-ext-link").forEach(el =>
+    el.addEventListener("click", () => setState({ drawerOpen: false }))
+  );
   document.querySelectorAll("[data-nav]").forEach(el =>
     el.addEventListener("click", () => {
       if(el.dataset.nav === "cycle-home"){
