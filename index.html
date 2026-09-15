@@ -180,6 +180,9 @@
   .vh-clear-link:hover{ text-decoration: underline; }
   .vh-clear-link:disabled{ opacity: 0.5; cursor: default; }
 
+  .vh-refresh-btn{ margin-left: auto; display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 9px; padding: 7px 12px; font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .vh-refresh-btn:hover:not(:disabled){ color: var(--accent); border-color: var(--accent); }
+  .vh-refresh-btn:disabled{ opacity: 0.5; cursor: default; }
   .vh-milk-tabs{ display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 4px; margin-bottom: 16px; }
   .vh-milk-tab{ flex: 1; background: none; border: none; color: var(--text-dim); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; padding: 9px 0; border-radius: 8px; cursor: pointer; }
   .vh-milk-tab.active{ background: var(--accent); color: #23272f; }
@@ -245,7 +248,9 @@ const ICON = {
   underline: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="5" y1="20" x2="19" y2="20"/></svg>',
   quote: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h4v4a4 4 0 0 1-4 4v2a6 6 0 0 0 6-6V7Z"/><path d="M15 7h4v4a4 4 0 0 1-4 4v2a6 6 0 0 0 6-6V7Z"/></svg>',
   ulist: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>',
-  price: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'
+  price: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+  chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>'
 };
 
 /* =========================================================
@@ -717,6 +722,37 @@ async function saveCyclesToSheet(nextCycles){
 ========================================================= */
 function milkBase(){ return `https://sheets.googleapis.com/v4/spreadsheets/${state.milkSheetId}`; }
 function monthKey(iso){ return (iso || "").slice(0,7); }            // "2026-09-08" -> "2026-09"
+
+/* Google Sheets may auto-convert a "YYYY-MM-DD" cell into a date type and
+   return it as a serial number (e.g. 45913) or a locale string (e.g.
+   "9/13/2026") instead of the original text. These bring it back to
+   canonical "YYYY-MM-DD" so day/month matching works after a reload. */
+function pad2(n){ return String(n).padStart(2,"0"); }
+function serialToISO(n){
+  // Google Sheets serial: day 0 = 1899-12-30. Convert to a UTC calendar date.
+  const ms = Math.round(n) * 86400000;
+  const base = Date.UTC(1899, 11, 30);
+  const d = new Date(base + ms);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())}`;
+}
+function normalizeSheetDate(v){
+  if(v == null) return "";
+  const s = String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;                 // already canonical
+  if(/^\d+(\.\d+)?$/.test(s)) return serialToISO(Number(s));  // serial number
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);       // M/D/YYYY (US locale)
+  if(m){ return `${m[3]}-${pad2(m[1])}-${pad2(m[2])}`; }
+  const d = new Date(s);                                       // last-resort parse
+  if(!isNaN(d)) return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+  return "";
+}
+function normalizeSheetMonth(v){
+  if(v == null) return "";
+  const s = String(v).trim();
+  if(/^\d{4}-\d{2}$/.test(s)) return s;                        // already canonical
+  const iso = normalizeSheetDate(s);                           // handle date-typed month cells
+  return iso ? iso.slice(0,7) : s;
+}
 function currentMonthKey(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
 function todayISO(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function monthLabel(key){ if(!key) return "—"; const [y,m] = key.split("-").map(Number); return `${MONTHS[m-1]} ${y}`; }
@@ -748,9 +784,10 @@ async function loadMilk(){
     const priceRows = (ranges[1] && ranges[1].values) || [];
     state.milkEntries = entryRows
       .filter(r => r[0])
-      .map(r => ({ id: uid(), date: r[0], litres: Number(r[1]) || 0 }));
+      .map(r => ({ id: uid(), date: normalizeSheetDate(r[0]), litres: Number(r[1]) || 0 }))
+      .filter(e => e.date);
     const prices = {};
-    priceRows.filter(r => r[0]).forEach(r => { prices[r[0]] = Number(r[1]) || 0; });
+    priceRows.filter(r => r[0]).forEach(r => { prices[normalizeSheetMonth(r[0])] = Number(r[1]) || 0; });
     state.milkPrices = prices;
     if(!state.milkMonth) state.milkMonth = currentMonthKey();
   }catch(e){
@@ -760,6 +797,43 @@ async function loadMilk(){
   setState({ milkLoading: false });
 }
 
+/* Ensure the Entries date column (A) and Prices month column (A) are plain
+   TEXT, so Sheets stops auto-converting "YYYY-MM-DD" into date serials.
+   Runs once per session; safe to attempt on the existing sheet. */
+let milkTextFormatDone = false;
+async function ensureMilkTextFormat(){
+  if(milkTextFormatDone || !state.accessToken || !state.milkSheetId) return;
+  try{
+    // Look up the sheetId (gid) of the Entries and Prices tabs.
+    const meta = await fetch(`${milkBase()}?fields=sheets.properties(sheetId,title)`, {
+      headers: { Authorization: "Bearer " + state.accessToken }
+    });
+    if(!meta.ok) return;
+    const mj = await meta.json();
+    const tabs = {};
+    (mj.sheets || []).forEach(s => { tabs[s.properties.title] = s.properties.sheetId; });
+    const reqs = [];
+    ["Entries","Prices"].forEach(t => {
+      if(tabs[t] == null) return;
+      reqs.push({
+        repeatCell: {
+          range: { sheetId: tabs[t], startColumnIndex: 0, endColumnIndex: 1 },
+          cell: { userEnteredFormat: { numberFormat: { type: "TEXT" } } },
+          fields: "userEnteredFormat.numberFormat"
+        }
+      });
+    });
+    if(reqs.length){
+      await fetch(`${milkBase()}:batchUpdate`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ requests: reqs })
+      });
+    }
+    milkTextFormatDone = true;
+  }catch(e){ console.error("VetriHub: ensureMilkTextFormat error", e); }
+}
+
 /* Rewrite the whole Entries tab from state (same clear+write approach the
    Cycle Tracker uses — simple and race-free for a single owner). */
 async function saveMilkEntries(nextEntries){
@@ -767,6 +841,7 @@ async function saveMilkEntries(nextEntries){
   setState({ saving: true });
   let ok = false;
   try{
+    await ensureMilkTextFormat();
     const clearRes = await fetch(`${milkBase()}/values/Entries!A2:B1000:clear`, {
       method: "POST",
       headers: { Authorization: "Bearer " + state.accessToken }
@@ -798,6 +873,7 @@ async function saveMilkPrices(nextPrices){
   setState({ saving: true });
   let ok = false;
   try{
+    await ensureMilkTextFormat();
     const clearRes = await fetch(`${milkBase()}/values/Prices!A2:B1000:clear`, {
       method: "POST",
       headers: { Authorization: "Bearer " + state.accessToken }
@@ -1463,7 +1539,10 @@ function milkView(){
 
   if(tab === "year"){
     return `
-      <div class="vh-section-row"><div class="vh-section-title">Milk</div></div>
+      <div class="vh-section-row">
+        <div class="vh-section-title">Milk</div>
+        <button class="vh-refresh-btn" id="milkRefreshBtn" aria-label="Refresh from sheet" ${state.milkLoading || state.saving ? "disabled" : ""}>${ICON.refresh} Refresh</button>
+      </div>
       ${toggle}
       ${milkYearView()}`;
   }
@@ -1480,6 +1559,7 @@ function milkView(){
   return `
     <div class="vh-section-row">
       <div class="vh-section-title">Milk</div>
+      <button class="vh-refresh-btn" id="milkRefreshBtn" aria-label="Refresh from sheet" ${state.milkLoading || state.saving ? "disabled" : ""}>${ICON.refresh} Refresh</button>
     </div>
     ${toggle}
 
@@ -1886,6 +1966,13 @@ function bindEvents(){
   });
   $("cycleConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "cycleConfirmScrim") setState({ cycleDeleteId: null }); });
 
+  // Milk — manual refresh: re-read the sheet without a full page reload
+  $("milkRefreshBtn")?.addEventListener("click", async () => {
+    if(state.milkLoading || state.saving) return;
+    await loadMilk();
+    render();
+  });
+
   // Milk — Daily / Yearly tab toggle
   $("milkTabGrid")?.addEventListener("click", () => setState({ milkTab: "grid" }));
   $("milkTabYear")?.addEventListener("click", () => setState({ milkTab: "year" }));
@@ -2125,12 +2212,30 @@ function bindEvents(){
    Boot
 ========================================================= */
 boot();
+
+/* Auto-refresh milk when you return to the app on any device. When you update
+   on your phone and switch back to the laptop (or unlock the phone to this
+   tab), this re-reads the sheet so you see the latest without a manual reload.
+   Scoped tight: only when signed in, on the Milk screen, not already loading. */
+let milkLastFocusLoad = 0;
+async function milkFocusRefresh(){
+  if(document.visibilityState !== "visible") return;
+  if(!state.signedIn || state.screen !== "milk") return;
+  if(state.milkLoading || state.saving) return;
+  const now = Date.now();
+  if(now - milkLastFocusLoad < 3000) return; // debounce rapid focus flips
+  milkLastFocusLoad = now;
+  await loadMilk();
+  render();
+}
+document.addEventListener("visibilitychange", milkFocusRefresh);
+window.addEventListener("focus", milkFocusRefresh);
+
 window.addEventListener("load", () => {
   if("serviceWorker" in navigator){
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 });
 </script>
-<!-- Cloudflare Web Analytics --><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "3e6c350fadd24b58b015d04b8035cf87"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
