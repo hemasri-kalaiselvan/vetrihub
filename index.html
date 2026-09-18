@@ -231,6 +231,8 @@ const CONFIG = {
   MILK_SHEET_ID: "1NoASLNpAyygqCBz_yzOpGcpI6_nraK4ji6Y-bQxDP-A",
   // Word Finder — a separate site; VetriHub links out to it as a tool.
   WORD_FINDER_URL: "https://hemasri-kalaiselvan.github.io/word-finder/",
+  // Siddha Search — a separate site; VetriHub links out to it as a tool.
+  SIDDHA_SEARCH_URL: "https://hemasri-kalaiselvan.github.io/siddha-search/",
   SCOPES: "openid email https://www.googleapis.com/auth/drive.file"
 };
 
@@ -1389,6 +1391,7 @@ function drawer(){
       <button class="vh-drawer-item ${state.screen==="recipe"?"active":""}" data-nav="recipe">Recipe</button>
       <button class="vh-drawer-item ${state.screen==="situations"?"active":""}" data-nav="situations">Situations &amp; Solutions</button>
       <a class="vh-drawer-item vh-ext-link" href="${CONFIG.WORD_FINDER_URL}" target="_blank" rel="noopener">Word Finder ${ICON.external}</a>
+      <a class="vh-drawer-item vh-ext-link" href="${CONFIG.SIDDHA_SEARCH_URL}" target="_blank" rel="noopener">Siddha Search ${ICON.external}</a>
       <hr class="vh-drawer-divider" />
       <button class="vh-drawer-item" id="authBtn">${state.signedIn ? "Sign out" : "Sign in"}</button>
     </nav>`;
@@ -1416,6 +1419,7 @@ function homeView(){
       <button class="vh-home-link" data-nav="recipe"><span class="vh-home-name">Recipe</span><span class="vh-arrow">${ICON.arrow}</span></button>
       <button class="vh-home-link" data-nav="situations"><span class="vh-home-name">Situations &amp; Solutions</span><span class="vh-arrow">${ICON.arrow}</span></button>
       <a class="vh-home-link" href="${CONFIG.WORD_FINDER_URL}" target="_blank" rel="noopener"><span class="vh-home-name">Word Finder ${ICON.external}</span><span class="vh-arrow">${ICON.arrow}</span></a>
+      <a class="vh-home-link" href="${CONFIG.SIDDHA_SEARCH_URL}" target="_blank" rel="noopener"><span class="vh-home-name">Siddha Search ${ICON.external}</span><span class="vh-arrow">${ICON.arrow}</span></a>
     </div>`;
 }
 
