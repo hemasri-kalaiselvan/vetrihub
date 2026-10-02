@@ -288,6 +288,7 @@ const state = {
   milkEntries: [],        // { id, date:"YYYY-MM-DD", litres:Number }
   milkPrices: {},         // { "YYYY-MM": Number }  price locked per month
   milkLoading: false,
+  milkLoaded: false,      // true once a sheet read succeeded this session; gates saves
   milkMonth: "",          // "YYYY-MM" currently viewed; defaults to current month
   milkTab: "grid",        // "grid" (daily) | "year" (yearly summary)
   milkExpandedYear: null, // which year is expanded in the yearly view
@@ -735,19 +736,47 @@ function monthKey(iso){ return (iso || "").slice(0,7); }            // "2026-09-
 function pad2(n){ return String(n).padStart(2,"0"); }
 function serialToISO(n){
   // Google Sheets serial: day 0 = 1899-12-30. Convert to a UTC calendar date.
-  const ms = Math.round(n) * 86400000;
+  // floor (not round) so a time fraction like 46280.5 doesn't bump to next day.
+  const ms = Math.floor(Number(n)) * 86400000;
   const base = Date.UTC(1899, 11, 30);
   const d = new Date(base + ms);
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())}`;
 }
+/* Normalize whatever Google Sheets hands back for a date into canonical
+   YYYY-MM-DD. Sheets may auto-convert a typed date and return it as a serial
+   number, or as a locale string — and under an India locale that string is
+   DD/MM/YYYY, which the old US-only parser mangled into an invalid month
+   (e.g. 15/09/2026 -> 2026-15-09), making every such day read as "not
+   recorded". This handles dash, slash/dot, serial, and month-name forms, and
+   disambiguates D/M vs M/D by which part exceeds 12 (defaulting to DD/MM). */
+const _MN = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function normalizeSheetDate(v){
   if(v == null) return "";
   const s = String(v).trim();
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;                 // already canonical
-  if(/^\d+(\.\d+)?$/.test(s)) return serialToISO(Number(s));  // serial number
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);       // M/D/YYYY (US locale)
-  if(m){ return `${m[3]}-${pad2(m[1])}-${pad2(m[2])}`; }
-  const d = new Date(s);                                       // last-resort parse
+  if(!s) return "";
+  // canonical YYYY-MM-DD (also tolerates single-digit month/day)
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m) return `${m[1]}-${pad2(m[2])}-${pad2(m[3])}`;
+  // serial number (with optional time fraction)
+  if(/^\d+(\.\d+)?$/.test(s)) return serialToISO(s);
+  // D/M/Y or M/D/Y with separators / . or -
+  m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if(m){
+    let a = +m[1], b = +m[2]; const y = m[3];
+    let day, mon;
+    if(a > 12){ day = a; mon = b; }        // first part >12 => it's the day (DD/MM)
+    else if(b > 12){ mon = a; day = b; }   // second part >12 => it's the day (MM/DD)
+    else { day = a; mon = b; }             // ambiguous => assume DD/MM (India)
+    if(mon >= 1 && mon <= 12 && day >= 1 && day <= 31) return `${y}-${pad2(mon)}-${pad2(day)}`;
+  }
+  // "15-Sep-2026" / "15 September 2026"
+  m = s.match(/^(\d{1,2})[ \-]([A-Za-z]{3,})[ \-,]+(\d{4})$/);
+  if(m){ const mi = _MN.findIndex(mo => m[2].toLowerCase().startsWith(mo)); if(mi>=0) return `${m[3]}-${pad2(mi+1)}-${pad2(+m[1])}`; }
+  // "Sep 15, 2026"
+  m = s.match(/^([A-Za-z]{3,})[ \-](\d{1,2}),?[ \-]+(\d{4})$/);
+  if(m){ const mi = _MN.findIndex(mo => m[1].toLowerCase().startsWith(mo)); if(mi>=0) return `${m[3]}-${pad2(mi+1)}-${pad2(+m[2])}`; }
+  // last-resort native parse (local time)
+  const d = new Date(s);
   if(!isNaN(d)) return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
   return "";
 }
@@ -795,6 +824,7 @@ async function loadMilk(){
     priceRows.filter(r => r[0]).forEach(r => { prices[normalizeSheetMonth(r[0])] = Number(r[1]) || 0; });
     state.milkPrices = prices;
     if(!state.milkMonth) state.milkMonth = currentMonthKey();
+    state.milkLoaded = true;   // a successful read — saves are now safe to attempt
   }catch(e){
     console.error("VetriHub: loadMilk error", e);
     showToast("Couldn't load milk — check Errors log.");
@@ -839,34 +869,74 @@ async function ensureMilkTextFormat(){
   }catch(e){ console.error("VetriHub: ensureMilkTextFormat error", e); }
 }
 
-/* Rewrite the whole Entries tab from state (same clear+write approach the
-   Cycle Tracker uses — simple and race-free for a single owner). */
-async function saveMilkEntries(nextEntries){
+/* Read the Entries tab fresh and return a {date: {date,litres}} map plus the
+   raw row count. Used to merge before every write so a single edit can never
+   drop rows that aren't in local memory (the old clear+rewrite-from-memory
+   approach wiped whole months whenever memory was incomplete at save time). */
+async function fetchMilkEntriesFresh(){
+  const res = await fetch(`${milkBase()}/values/Entries!A2:B100000`, {
+    headers: { Authorization: "Bearer " + state.accessToken },
+    cache: "no-store"
+  });
+  if(!res.ok){ throw new Error("milk pre-save read failed: " + res.status + " " + await res.text()); }
+  const data = await res.json();
+  const rows = data.values || [];
+  const byDate = {};
+  rows.filter(r => r[0]).forEach(r => {
+    const d = normalizeSheetDate(r[0]);
+    if(d) byDate[d] = { date: d, litres: Number(r[1]) || 0 };
+  });
+  return { byDate, rawCount: rows.filter(r => r[0]).length };
+}
+
+/* SAFE SAVE — never blind-clears. It applies ONE change (set or delete of a
+   single date) on top of the sheet's CURRENT contents, re-read right now:
+     change = { date, litres }   -> set/overwrite that day
+     change = { date, remove:true } -> delete that day
+   Because it merges into a fresh read, rows for other days are always kept,
+   even if local memory is stale or empty. */
+async function applyMilkChange(change){
   if(!state.accessToken || !state.milkSheetId) return false;
   setState({ saving: true });
   let ok = false;
   try{
     await ensureMilkTextFormat();
-    const clearRes = await fetch(`${milkBase()}/values/Entries!A2:B1000:clear`, {
+    // 1. Re-read the sheet as it is RIGHT NOW. If this fails, we abort without
+    //    touching anything — a failed read must never lead to a wipe. This
+    //    fresh read is the authoritative base we merge the one change into,
+    //    so even a stale or empty local memory cannot drop other days' rows.
+    const { byDate } = await fetchMilkEntriesFresh();
+    state.milkLoaded = true;
+    // 2. Apply the single change to the fresh picture.
+    if(change.remove){ delete byDate[change.date]; }
+    else { byDate[change.date] = { date: change.date, litres: change.litres }; }
+    // 3. Build the full row set, newest first.
+    const merged = Object.values(byDate).sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
+    const values = merged.map(e => [e.date, e.litres]);
+    // 4. Write every row, then clear only the slack rows below. We overwrite
+    //    in place rather than clear-then-write, so a mid-operation failure
+    //    can't leave the sheet empty.
+    if(values.length){
+      const upd = await fetch(`${milkBase()}/values/Entries!A2:B${values.length+1}?valueInputOption=RAW`, {
+        method: "PUT",
+        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ range: `Entries!A2:B${values.length+1}`, majorDimension: "ROWS", values })
+      });
+      if(!upd.ok){ throw new Error("milk write failed: " + upd.status + " " + await upd.text()); }
+    }
+    // Clear any leftover rows below the data (e.g. after a delete shrank it).
+    const clearFrom = values.length + 2; // first unused sheet row
+    const clr = await fetch(`${milkBase()}/values/Entries!A${clearFrom}:B100000:clear`, {
       method: "POST",
       headers: { Authorization: "Bearer " + state.accessToken }
     });
-    if(!clearRes.ok){ throw new Error("milk entries clear failed: " + clearRes.status + " " + await clearRes.text()); }
-    const sorted = [...nextEntries].sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
-    if(sorted.length){
-      const values = sorted.map(e => [e.date, e.litres]);
-      const upd = await fetch(`${milkBase()}/values/Entries!A2:B${sorted.length+1}?valueInputOption=RAW`, {
-        method: "PUT",
-        headers: { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" },
-        body: JSON.stringify({ range: `Entries!A2:B${sorted.length+1}`, majorDimension: "ROWS", values })
-      });
-      if(!upd.ok){ throw new Error("milk entries write failed: " + upd.status + " " + await upd.text()); }
-    }
-    state.milkEntries = nextEntries;
+    if(!clr.ok){ console.error("VetriHub: milk tail-clear failed (non-fatal)", clr.status, await clr.text()); }
+    // 5. Update local memory to match the merged truth.
+    state.milkEntries = merged.map(e => ({ id: uid(), date: e.date, litres: e.litres }));
     ok = true;
   }catch(e){
-    console.error("VetriHub: saveMilkEntries error", e);
-    showToast("Couldn't save to Sheet — check Errors log.");
+    console.error("VetriHub: applyMilkChange error", e);
+    showToast("Couldn't save — nothing changed. Check Errors log.");
   }
   setState({ saving: false });
   return ok;
@@ -904,15 +974,16 @@ async function saveMilkPrices(nextPrices){
   return ok;
 }
 
-/* Add or edit one day's entry. One entry per date — adding a date that
-   already exists overwrites its litres (you'd be correcting the day). */
+/* Add or edit one day's entry. One entry per date — saving a date that already
+   exists overwrites its litres. Goes through applyMilkChange, which merges into
+   a fresh read, so other days are never lost. */
 async function upsertMilkEntry(date, litres, editId){
-  const next = state.milkEntries.filter(e => e.id !== editId && e.date !== date);
-  next.push({ id: editId || uid(), date, litres });
-  return saveMilkEntries(next);
+  return applyMilkChange({ date, litres });
 }
 async function deleteMilkEntry(id){
-  return saveMilkEntries(state.milkEntries.filter(e => e.id !== id));
+  const entry = state.milkEntries.find(e => e.id === id);
+  if(!entry) return false;
+  return applyMilkChange({ date: entry.date, remove: true });
 }
 
 /* =========================================================
