@@ -1999,10 +1999,9 @@ function bindEvents(){
         setState({ screen: "cycle", drawerOpen: false });
         return;
       }
-      if(el.dataset.nav === "milk-home"){
+      if(el.dataset.nav === "milk-home" || el.dataset.nav === "milk"){
         if(!state.signedIn){ setState({ drawerOpen: false }); return; }
-        sessionStorage.setItem("vetrihub_screen", "milk");
-        setState({ screen: "milk", milkMonth: state.milkMonth || currentMonthKey(), drawerOpen: false });
+        openMilk();
         return;
       }
       sessionStorage.setItem("vetrihub_screen", el.dataset.nav);
@@ -2300,20 +2299,42 @@ boot();
 /* Auto-refresh milk when you return to the app on any device. When you update
    on your phone and switch back to the laptop (or unlock the phone to this
    tab), this re-reads the sheet so you see the latest without a manual reload.
-   Scoped tight: only when signed in, on the Milk screen, not already loading. */
+   Scoped tight: only when signed in, on the Milk screen, not already loading.
+   force=true (used by pageshow/open) bypasses the debounce — reopening the
+   installed PWA the next day must always pull fresh data, never a stale draw. */
 let milkLastFocusLoad = 0;
-async function milkFocusRefresh(){
-  if(document.visibilityState !== "visible") return;
+
+/* Open the Milk screen AND always pull fresh data. Navigating to Milk shows
+   the last-loaded data instantly (so it feels fast), then re-reads the sheet
+   in the background and re-renders when it arrives — so a day-old entry made
+   on another device, or yesterday on this one, appears without a manual
+   Refresh. This is the main fix for "shows not recorded until I refresh". */
+async function openMilk(){
+  sessionStorage.setItem("vetrihub_screen", "milk");
+  setState({ screen: "milk", milkMonth: state.milkMonth || currentMonthKey(), drawerOpen: false });
+  if(state.signedIn && !state.milkLoading && !state.saving){
+    milkLastFocusLoad = Date.now();
+    await loadMilk();
+    render();
+  }
+}
+
+async function milkFocusRefresh(force){
+  if(document.visibilityState !== "visible" && !force) return;
   if(!state.signedIn || state.screen !== "milk") return;
   if(state.milkLoading || state.saving) return;
   const now = Date.now();
-  if(now - milkLastFocusLoad < 3000) return; // debounce rapid focus flips
+  if(!force && now - milkLastFocusLoad < 3000) return; // debounce rapid focus flips
   milkLastFocusLoad = now;
   await loadMilk();
   render();
 }
-document.addEventListener("visibilitychange", milkFocusRefresh);
-window.addEventListener("focus", milkFocusRefresh);
+document.addEventListener("visibilitychange", () => milkFocusRefresh(false));
+window.addEventListener("focus", () => milkFocusRefresh(false));
+/* pageshow fires when an installed PWA is resumed from the background or the
+   back/forward cache — the Android "reopen from launcher the next day" case
+   that focus/visibilitychange often miss. Force a fresh read then. */
+window.addEventListener("pageshow", () => milkFocusRefresh(true));
 
 window.addEventListener("load", () => {
   if("serviceWorker" in navigator){
