@@ -70,6 +70,7 @@
   .vh-table thead th{ position: sticky; top: 0; z-index: 5; background: var(--surface-2); color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; font-weight: 600; text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--border); }
   .vh-table td{ padding: 13px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .vh-table td.vh-nowrap{ white-space: nowrap; }
+  .vh-nowrap-line{ white-space: nowrap; }
   .vh-log-add{ display:flex; gap:8px; align-items:center; }
   .vh-log-add input{ flex:1; min-width:0; }
   .vh-log-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
@@ -271,6 +272,15 @@ const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 function toDateObj(iso){ const [y,m,d] = iso.split("-").map(Number); return new Date(y, m-1, d); }
 // Compact dates for the table: "Oct 15" (year already shown in the Date column)
 function shortDate(iso){ if(!iso) return "—"; const dt = toDateObj(iso); return `${MONTHS[dt.getMonth()]} ${dt.getDate()}`; }
+// Log dates: max two per line, no year, each date kept whole on its line
+function logLines(log){
+  const dates = log.split(", ").filter(Boolean).map(shortDate);
+  const lines = [];
+  for(let i = 0; i < dates.length; i += 2){
+    lines.push(`<span class="vh-nowrap-line">${dates.slice(i, i + 2).join(", ")}</span>`);
+  }
+  return lines.join("<br>");
+}
 function shortRange(a, b){
   const da = toDateObj(a), db = toDateObj(b);
   if(da.getMonth() === db.getMonth()) return `${MONTHS[da.getMonth()]} ${da.getDate()}–${db.getDate()}`;
@@ -1645,7 +1655,7 @@ function cycleView(){
                   <td class="vh-nowrap">${r.expectedNext ? formatDate(r.expectedNext) : "—"}</td>
                   <td class="vh-nowrap">${(state.conceptionRows[r.date] && state.conceptionRows[r.date].fertileStart) ? shortRange(state.conceptionRows[r.date].fertileStart, state.conceptionRows[r.date].fertileEnd) : "—"}</td>
                   <td class="vh-nowrap">${(state.conceptionRows[r.date] && state.conceptionRows[r.date].peak) ? shortDate(state.conceptionRows[r.date].peak) : "—"}</td>
-                  <td>${r.log ? r.log.split(", ").map(shortDate).join(", ") : "—"}</td>
+                  <td>${r.log ? logLines(r.log) : "—"}</td>
                   <td>
                     <div class="vh-actions-cell">
                       <button class="vh-icon-btn" data-edit-cycle="${r.id}" aria-label="Edit cycle" ${state.saving ? "disabled" : ""}>${ICON.edit}</button>
