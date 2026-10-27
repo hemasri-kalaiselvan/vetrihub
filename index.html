@@ -69,6 +69,12 @@
   table.vh-table{ width: 100%; border-collapse: collapse; font-size: 14px; }
   .vh-table thead th{ position: sticky; top: 0; z-index: 5; background: var(--surface-2); color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; font-weight: 600; text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--border); }
   .vh-table td{ padding: 13px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .vh-table td.vh-nowrap{ white-space: nowrap; }
+  .vh-log-add{ display:flex; gap:8px; align-items:center; }
+  .vh-log-add input{ flex:1; min-width:0; }
+  .vh-log-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .vh-chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:var(--surface-2); border:1px solid var(--border); font-size:13px; }
+  .vh-chip-x{ background:none; border:0; color:var(--text-dim); font-size:16px; line-height:1; cursor:pointer; padding:0; }
   .vh-table tr:last-child td{ border-bottom: none; }
   .vh-actions-cell{ display: flex; gap: 6px; }
   .vh-icon-btn{ background: none; border: none; cursor: pointer; color: var(--text-dim); padding: 6px; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
@@ -263,6 +269,13 @@ const ICON = {
 ========================================================= */
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function toDateObj(iso){ const [y,m,d] = iso.split("-").map(Number); return new Date(y, m-1, d); }
+// Compact dates for the table: "Oct 15" (year already shown in the Date column)
+function shortDate(iso){ if(!iso) return "—"; const dt = toDateObj(iso); return `${MONTHS[dt.getMonth()]} ${dt.getDate()}`; }
+function shortRange(a, b){
+  const da = toDateObj(a), db = toDateObj(b);
+  if(da.getMonth() === db.getMonth()) return `${MONTHS[da.getMonth()]} ${da.getDate()}–${db.getDate()}`;
+  return `${shortDate(a)}–${shortDate(b)}`;
+}
 function formatDate(iso){ if(!iso) return "—"; const dt = toDateObj(iso); return `${MONTHS[dt.getMonth()]} ${String(dt.getDate()).padStart(2,"0")}, ${dt.getFullYear()}`; }
 function diffDays(a,b){ return Math.round((toDateObj(a) - toDateObj(b)) / 86400000); }
 function addDays(iso, days){ const dt = toDateObj(iso); dt.setDate(dt.getDate()+days); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; }
@@ -1515,18 +1528,6 @@ function conceptionFor(expectedNext){
   return { fertileStart: addDays(ovulation, -5), fertileEnd: addDays(ovulation, 1), peak: ovulation };
 }
 
-// "2026-10-10, 10/12/2026" -> { dates: ["2026-10-10", "2026-10-12"] } or { error: "xyz" }
-function parseConceptionLog(raw){
-  const parts = String(raw || "").split(",").map(s => s.trim()).filter(Boolean);
-  const dates = [];
-  for(const p of parts){
-    const d = normalizeSheetDate(p);
-    if(!d) return { error: p };
-    if(!dates.includes(d)) dates.push(d);
-  }
-  return { dates: dates.sort() };
-}
-
 // Reads the Conception tab. Returns true when the read succeeded.
 async function loadConception(){
   if(!state.accessToken || !state.sheetId) return false;
@@ -1639,12 +1640,12 @@ function cycleView(){
             ${rows.length === 0 ? `<tr><td colspan="7"><div class="vh-empty">No cycles logged yet.</div></td></tr>` :
               rows.map(r => `
                 <tr>
-                  <td>${formatDate(r.date)}${r.time ? `, ${formatTime(r.time)}` : ""}</td>
+                  <td class="vh-nowrap">${formatDate(r.date)}${r.time ? `<br><small>${formatTime(r.time)}</small>` : ""}</td>
                   <td>${r.gap != null ? r.gap : "—"}</td>
-                  <td>${r.expectedNext ? formatDate(r.expectedNext) : "—"}</td>
-                  <td>${(state.conceptionRows[r.date] && state.conceptionRows[r.date].fertileStart) ? `${formatDate(state.conceptionRows[r.date].fertileStart)} – ${formatDate(state.conceptionRows[r.date].fertileEnd)}` : "—"}</td>
-                  <td>${(state.conceptionRows[r.date] && state.conceptionRows[r.date].peak) ? formatDate(state.conceptionRows[r.date].peak) : "—"}</td>
-                  <td>${r.log ? r.log.split(", ").map(formatDate).join(", ") : "—"}</td>
+                  <td class="vh-nowrap">${r.expectedNext ? formatDate(r.expectedNext) : "—"}</td>
+                  <td class="vh-nowrap">${(state.conceptionRows[r.date] && state.conceptionRows[r.date].fertileStart) ? shortRange(state.conceptionRows[r.date].fertileStart, state.conceptionRows[r.date].fertileEnd) : "—"}</td>
+                  <td class="vh-nowrap">${(state.conceptionRows[r.date] && state.conceptionRows[r.date].peak) ? shortDate(state.conceptionRows[r.date].peak) : "—"}</td>
+                  <td>${r.log ? r.log.split(", ").map(shortDate).join(", ") : "—"}</td>
                   <td>
                     <div class="vh-actions-cell">
                       <button class="vh-icon-btn" data-edit-cycle="${r.id}" aria-label="Edit cycle" ${state.saving ? "disabled" : ""}>${ICON.edit}</button>
@@ -1675,8 +1676,16 @@ function cycleFormModal(){
           <input id="cycleTimeInput" type="time" value="${f.time || ""}" />
         </div>
         <div class="vh-field">
-          <label for="cycleLogInput">Conception log (optional, comma-separated dates)</label>
-          <input id="cycleLogInput" type="text" value="${esc(f.log || "")}" placeholder="e.g. 2026-10-10, 2026-10-12" />
+          <label for="cycleLogDateInput">Conception log (optional)</label>
+          <div class="vh-log-add">
+            <input id="cycleLogDateInput" type="date" />
+            <button type="button" class="vh-btn vh-btn-cancel" id="cycleLogAddBtn">Add</button>
+          </div>
+          <div class="vh-log-chips">
+            ${(f.logDates || []).length
+              ? (f.logDates || []).map(d => `<span class="vh-chip">${formatDate(d)}<button type="button" class="vh-chip-x" data-log-remove="${d}" aria-label="Remove date">×</button></span>`).join("")
+              : `<span class="vh-dim">No conception dates added</span>`}
+          </div>
         </div>
         <div class="vh-modal-actions">
           <button class="vh-btn vh-btn-cancel" id="cycleCancelBtn" ${state.saving ? "disabled" : ""}>Cancel</button>
@@ -2128,12 +2137,12 @@ function bindEvents(){
   $("authBtn")?.addEventListener("click", () => { state.signedIn ? signOut() : signIn(); });
 
   // Cycle
-  $("addCycleBtn")?.addEventListener("click", () => { if(state.saving) return; setState({ cycleForm: { mode: "add", date: "", time: "", log: "", error: "" } }); });
+  $("addCycleBtn")?.addEventListener("click", () => { if(state.saving) return; setState({ cycleForm: { mode: "add", date: "", time: "", logDates: [], error: "" } }); });
   document.querySelectorAll("[data-edit-cycle]").forEach(el =>
     el.addEventListener("click", () => {
       if(state.saving) return;
       const c = state.cycles.find(x => x.id === el.dataset.editCycle);
-      if(c) setState({ cycleForm: { mode: "edit", id: c.id, date: c.date, time: c.time || "", log: c.log || "", error: "" } });
+      if(c) setState({ cycleForm: { mode: "edit", id: c.id, date: c.date, time: c.time || "", logDates: c.log ? c.log.split(", ") : [], error: "" } });
     })
   );
   document.querySelectorAll("[data-delete-cycle]").forEach(el =>
@@ -2141,17 +2150,28 @@ function bindEvents(){
   );
   $("cycleModalScrim")?.addEventListener("click", (e) => { if(e.target.id === "cycleModalScrim") setState({ cycleForm: null }); });
   $("cycleCancelBtn")?.addEventListener("click", () => setState({ cycleForm: null }));
+  // Conception log: pick dates from the calendar, add to list, remove with ×
+  $("cycleLogAddBtn")?.addEventListener("click", () => {
+    const cur = state.cycleForm;
+    const picked = $("cycleLogDateInput").value;
+    const base = { ...cur, date: $("cycleDateInput").value, time: $("cycleTimeInput").value, error: "" };
+    if(!picked){ setState({ cycleForm: { ...base, error: "Pick a date to add to the conception log." } }); return; }
+    const existing = cur.logDates || [];
+    const logDates = existing.includes(picked) ? existing : [...existing, picked].sort();
+    setState({ cycleForm: { ...base, logDates } });
+  });
+  document.querySelectorAll("[data-log-remove]").forEach(el =>
+    el.addEventListener("click", () => {
+      const cur = state.cycleForm;
+      setState({ cycleForm: { ...cur, date: $("cycleDateInput").value, time: $("cycleTimeInput").value,
+        logDates: (cur.logDates || []).filter(d => d !== el.dataset.logRemove) } });
+    }));
   $("cycleSaveBtn")?.addEventListener("click", async () => {
     if(state.saving) return;
     const date = $("cycleDateInput").value;
     const time = $("cycleTimeInput").value;
     if(!date){ setState({ cycleForm: { ...state.cycleForm, date, time, error: "Cycle date is required." } }); return; }
-    const logParsed = parseConceptionLog($("cycleLogInput")?.value);
-    if(logParsed.error){
-      setState({ cycleForm: { ...state.cycleForm, date, time, log: $("cycleLogInput").value, error: `Couldn't read "${logParsed.error}" in the conception log.` } });
-      return;
-    }
-    const log = logParsed.dates.join(", ");
+    const log = [...(state.cycleForm.logDates || [])].sort().join(", ");
     const formSnapshot = state.cycleForm;
     const next = formSnapshot.mode === "edit"
       ? state.cycles.map(c => c.id === formSnapshot.id ? { ...c, date, time, log } : c)
