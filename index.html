@@ -1506,7 +1506,7 @@ function lockedView(title){
    from each row's Expected Next (= Date + Gap) and STORED when the cycle list
    is saved. Sheet1 save/update logic is not touched. */
 const CONCEPTION_TAB = "Conception";
-const CONCEPTION_HEADERS = ["Cycle Date","Fertile Start","Fertile End","Peak Day","Conception Log"];
+const CONCEPTION_HEADERS = ["Cycle Date","Fertile Start","Fertile End","Peak","Log"];
 
 // Ovulation ≈ Expected Next − 14 days; fertile window = ovulation −5 … +1; peak = ovulation day.
 function conceptionFor(expectedNext){
@@ -1634,7 +1634,7 @@ function cycleView(){
     <div class="vh-table-wrap">
       <div class="vh-table-scroll">
         <table class="vh-table">
-          <thead><tr><th>Date</th><th>Gap (days)</th><th>Expected Next</th><th>Fertile Window</th><th>Peak Day</th><th>Conception Log</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Date</th><th>Gap (days)</th><th>Expected Next</th><th>Fertile</th><th>Peak</th><th>Log</th><th>Actions</th></tr></thead>
           <tbody>
             ${rows.length === 0 ? `<tr><td colspan="7"><div class="vh-empty">No cycles logged yet.</div></td></tr>` :
               rows.map(r => `
