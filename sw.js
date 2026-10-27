@@ -1,4 +1,4 @@
-const CACHE = "vetrihub-v1";
+const CACHE = "vetrihub-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -25,6 +25,9 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  // Only cache our own app files. Google Sheets/Drive/OAuth requests are live
+  // data; serving a cached copy here made edits look reverted after refresh.
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const fetchPromise = fetch(e.request)

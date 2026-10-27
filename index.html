@@ -283,6 +283,7 @@ const state = {
   situationsSheetId: localStorage.getItem("vetrihub_situations_sheet_id") || CONFIG.SITUATIONS_SHEET_ID || "",
   docId: localStorage.getItem("vetrihub_doc_id") || CONFIG.DOC_ID || "",
   cycles: [],
+  conceptionRows: {},
   cyclesLoading: false,
   milkSheetId: localStorage.getItem("vetrihub_milk_sheet_id") || CONFIG.MILK_SHEET_ID || "",
   milkEntries: [],        // { id, date:"YYYY-MM-DD", litres:Number }
@@ -679,6 +680,7 @@ async function loadCycles(){
     console.error("VetriHub: loadCycles error", e);
     showToast("Couldn't load cycles — check Errors log.");
   }
+  await loadConception();
   setState({ cyclesLoading: false });
 }
 
@@ -1498,6 +1500,113 @@ function lockedView(title){
   return `<div class="vh-section-row"><div class="vh-section-title">${esc(title || "Cycle Tracker")} ${ICON.lock}</div></div>`;
 }
 
+/* ---- Conception tab (same spreadsheet as Cycle Tracker, separate tab) ----
+   Sheet1 is rewritten on every cycle save, so the fertile window, peak day and
+   conception log live in their own tab. Fertile/peak values are calculated
+   from each row's Expected Next (= Date + Gap) and STORED when the cycle list
+   is saved. Sheet1 save/update logic is not touched. */
+const CONCEPTION_TAB = "Conception";
+const CONCEPTION_HEADERS = ["Cycle Date","Fertile Start","Fertile End","Peak Day","Conception Log"];
+
+// Ovulation ≈ Expected Next − 14 days; fertile window = ovulation −5 … +1; peak = ovulation day.
+function conceptionFor(expectedNext){
+  if(!expectedNext) return null;
+  const ovulation = addDays(expectedNext, -14);
+  return { fertileStart: addDays(ovulation, -5), fertileEnd: addDays(ovulation, 1), peak: ovulation };
+}
+
+// "2026-10-10, 10/12/2026" -> { dates: ["2026-10-10", "2026-10-12"] } or { error: "xyz" }
+function parseConceptionLog(raw){
+  const parts = String(raw || "").split(",").map(s => s.trim()).filter(Boolean);
+  const dates = [];
+  for(const p of parts){
+    const d = normalizeSheetDate(p);
+    if(!d) return { error: p };
+    if(!dates.includes(d)) dates.push(d);
+  }
+  return { dates: dates.sort() };
+}
+
+// Reads the Conception tab. Returns true when the read succeeded.
+async function loadConception(){
+  if(!state.accessToken || !state.sheetId) return false;
+  try{
+    const res = await fetch(`${sheetsBase()}/values/${CONCEPTION_TAB}!A2:E1000`, {
+      headers: { Authorization: "Bearer " + state.accessToken },
+      cache: "no-store"
+    });
+    if(!res.ok){
+      // Expected on first use: the tab is created on the first save.
+      console.warn("VetriHub: Conception read", res.status);
+      state.conceptionRows = {};
+      return false;
+    }
+    const data = await res.json();
+    const rows = data.values || [];
+    const map = {}, logs = {};
+    rows.filter(r => r[0]).forEach(r => {
+      const d = normalizeSheetDate(r[0]);
+      if(!d) return;
+      map[d] = { fertileStart: r[1] || "", fertileEnd: r[2] || "", peak: r[3] || "" };
+      logs[d] = r[4] || "";
+    });
+    state.conceptionRows = map;
+    state.cycles = state.cycles.map(c => ({ ...c, log: logs[normalizeSheetDate(c.date)] || "" }));
+    return true;
+  }catch(e){
+    console.error("VetriHub: loadConception error", e);
+    return false;
+  }
+}
+
+// Rewrites the Conception tab from a cycle list (values only, computed once here).
+async function saveConceptionTab(list){
+  if(!state.accessToken || !state.sheetId) return false;
+  let ok = false;
+  try{
+    const headers = { Authorization: "Bearer " + state.accessToken, "Content-Type": "application/json" };
+    // Create the tab if it does not exist yet.
+    const metaRes = await fetch(`${sheetsBase()}?fields=sheets.properties.title`, { headers: { Authorization: headers.Authorization }, cache: "no-store" });
+    if(!metaRes.ok) throw new Error("conception meta failed: " + metaRes.status);
+    const titles = ((await metaRes.json()).sheets || []).map(s => s.properties.title);
+    if(!titles.includes(CONCEPTION_TAB)){
+      const addRes = await fetch(`${sheetsBase()}:batchUpdate`, {
+        method: "POST", headers,
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: CONCEPTION_TAB } } }] })
+      });
+      if(!addRes.ok) throw new Error("conception tab create failed: " + addRes.status);
+    }
+    const rows = computeRowsWithGaps(list);
+    const values = [
+      CONCEPTION_HEADERS,
+      ...rows.map(r => {
+        const c = conceptionFor(r.expectedNext);
+        return [r.date, c ? c.fertileStart : "", c ? c.fertileEnd : "", c ? c.peak : "", r.log || ""];
+      })
+    ];
+    const clr = await fetch(`${sheetsBase()}/values/${CONCEPTION_TAB}!A1:E1000:clear`, {
+      method: "POST", headers: { Authorization: headers.Authorization }
+    });
+    if(!clr.ok) throw new Error("conception clear failed: " + clr.status);
+    const upd = await fetch(`${sheetsBase()}/values/${CONCEPTION_TAB}!A1:E${values.length}?valueInputOption=RAW`, {
+      method: "PUT", headers,
+      body: JSON.stringify({ range: `${CONCEPTION_TAB}!A1:E${values.length}`, majorDimension: "ROWS", values })
+    });
+    if(!upd.ok) throw new Error("conception write failed: " + upd.status);
+    const map = {};
+    rows.forEach(r => {
+      const c = conceptionFor(r.expectedNext);
+      map[r.date] = c ? { fertileStart: c.fertileStart, fertileEnd: c.fertileEnd, peak: c.peak } : { fertileStart: "", fertileEnd: "", peak: "" };
+    });
+    state.conceptionRows = map;
+    ok = true;
+  }catch(e){
+    console.error("VetriHub: saveConceptionTab error", e);
+    showToast("Cycle saved, but Conception columns didn't update — check Errors log.");
+  }
+  return ok;
+}
+
 function computeRowsWithGaps(cyclesArr){
   const sorted = [...cyclesArr].sort((a,b) => {
     if(a.date !== b.date) return a.date < b.date ? 1 : -1;
@@ -1525,14 +1634,17 @@ function cycleView(){
     <div class="vh-table-wrap">
       <div class="vh-table-scroll">
         <table class="vh-table">
-          <thead><tr><th>Date</th><th>Gap (days)</th><th>Expected Next</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Date</th><th>Gap (days)</th><th>Expected Next</th><th>Fertile Window</th><th>Peak Day</th><th>Conception Log</th><th>Actions</th></tr></thead>
           <tbody>
-            ${rows.length === 0 ? `<tr><td colspan="4"><div class="vh-empty">No cycles logged yet.</div></td></tr>` :
+            ${rows.length === 0 ? `<tr><td colspan="7"><div class="vh-empty">No cycles logged yet.</div></td></tr>` :
               rows.map(r => `
                 <tr>
                   <td>${formatDate(r.date)}${r.time ? `, ${formatTime(r.time)}` : ""}</td>
                   <td>${r.gap != null ? r.gap : "—"}</td>
                   <td>${r.expectedNext ? formatDate(r.expectedNext) : "—"}</td>
+                  <td>${(state.conceptionRows[r.date] && state.conceptionRows[r.date].fertileStart) ? `${formatDate(state.conceptionRows[r.date].fertileStart)} – ${formatDate(state.conceptionRows[r.date].fertileEnd)}` : "—"}</td>
+                  <td>${(state.conceptionRows[r.date] && state.conceptionRows[r.date].peak) ? formatDate(state.conceptionRows[r.date].peak) : "—"}</td>
+                  <td>${r.log ? r.log.split(", ").map(formatDate).join(", ") : "—"}</td>
                   <td>
                     <div class="vh-actions-cell">
                       <button class="vh-icon-btn" data-edit-cycle="${r.id}" aria-label="Edit cycle" ${state.saving ? "disabled" : ""}>${ICON.edit}</button>
@@ -1561,6 +1673,10 @@ function cycleFormModal(){
         <div class="vh-field">
           <label for="cycleTimeInput">Cycle time (optional)</label>
           <input id="cycleTimeInput" type="time" value="${f.time || ""}" />
+        </div>
+        <div class="vh-field">
+          <label for="cycleLogInput">Conception log (optional, comma-separated dates)</label>
+          <input id="cycleLogInput" type="text" value="${esc(f.log || "")}" placeholder="e.g. 2026-10-10, 2026-10-12" />
         </div>
         <div class="vh-modal-actions">
           <button class="vh-btn vh-btn-cancel" id="cycleCancelBtn" ${state.saving ? "disabled" : ""}>Cancel</button>
@@ -2012,12 +2128,12 @@ function bindEvents(){
   $("authBtn")?.addEventListener("click", () => { state.signedIn ? signOut() : signIn(); });
 
   // Cycle
-  $("addCycleBtn")?.addEventListener("click", () => { if(state.saving) return; setState({ cycleForm: { mode: "add", date: "", time: "", error: "" } }); });
+  $("addCycleBtn")?.addEventListener("click", () => { if(state.saving) return; setState({ cycleForm: { mode: "add", date: "", time: "", log: "", error: "" } }); });
   document.querySelectorAll("[data-edit-cycle]").forEach(el =>
     el.addEventListener("click", () => {
       if(state.saving) return;
       const c = state.cycles.find(x => x.id === el.dataset.editCycle);
-      if(c) setState({ cycleForm: { mode: "edit", id: c.id, date: c.date, time: c.time || "", error: "" } });
+      if(c) setState({ cycleForm: { mode: "edit", id: c.id, date: c.date, time: c.time || "", log: c.log || "", error: "" } });
     })
   );
   document.querySelectorAll("[data-delete-cycle]").forEach(el =>
@@ -2030,12 +2146,19 @@ function bindEvents(){
     const date = $("cycleDateInput").value;
     const time = $("cycleTimeInput").value;
     if(!date){ setState({ cycleForm: { ...state.cycleForm, date, time, error: "Cycle date is required." } }); return; }
+    const logParsed = parseConceptionLog($("cycleLogInput")?.value);
+    if(logParsed.error){
+      setState({ cycleForm: { ...state.cycleForm, date, time, log: $("cycleLogInput").value, error: `Couldn't read "${logParsed.error}" in the conception log.` } });
+      return;
+    }
+    const log = logParsed.dates.join(", ");
     const formSnapshot = state.cycleForm;
     const next = formSnapshot.mode === "edit"
-      ? state.cycles.map(c => c.id === formSnapshot.id ? { ...c, date, time } : c)
-      : [...state.cycles, { id: uid(), date, time }];
+      ? state.cycles.map(c => c.id === formSnapshot.id ? { ...c, date, time, log } : c)
+      : [...state.cycles, { id: uid(), date, time, log }];
     setState({ cycleForm: null });
     await saveCyclesToSheet(next);
+    if(state.cycles === next) await saveConceptionTab(next);
     render();
   });
   $("cycleConfirmCancel")?.addEventListener("click", () => setState({ cycleDeleteId: null }));
@@ -2045,6 +2168,7 @@ function bindEvents(){
     const next = state.cycles.filter(c => c.id !== idToDelete);
     setState({ cycleDeleteId: null });
     await saveCyclesToSheet(next);
+    if(state.cycles === next) await saveConceptionTab(next);
     render();
   });
   $("cycleConfirmScrim")?.addEventListener("click", (e) => { if(e.target.id === "cycleConfirmScrim") setState({ cycleDeleteId: null }); });
